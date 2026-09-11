@@ -8,6 +8,7 @@ import { paulStretch } from './audio/stretch.js';
 import { Midi, KNOB_TARGETS, RELATIVE, noteOf } from './audio/midi.js';
 import { Swells } from './swells.js';
 import { Effects, EFFECTS } from './effects.js';
+import { runTour, shouldRun } from './tour.js';
 import { Broadcast, WorldClock } from './audio/broadcast.js';
 import * as freesound from './audio/freesound.js';
 import { captureState, Morpher, serialize, deserialize, decodeAudio, audioSize } from './snapshots.js';
@@ -155,6 +156,7 @@ function buildPads() {
     el.innerHTML = `
       <div class="pad-head">
         <div class="pad-num">${i + 1}</div>
+        <button class="pad-play" title="Fade this pad in or out"></button>
         <div class="pad-name"></div>
         <div class="pad-cyc"></div>
       </div>
@@ -162,6 +164,13 @@ function buildPads() {
     host.appendChild(el);
     pad.el = el;
     pad.canvas = el.querySelector('canvas');
+    // The pad is playable with a mouse alone; the number keys are a shortcut,
+    // not the only way in.
+    el.querySelector('.pad-play').addEventListener('click', (e) => {
+      e.stopPropagation();
+      select(i);
+      togglePad(i);
+    });
     wirePad(pad);
   });
   renderPadHeads();
@@ -176,6 +185,11 @@ function renderPadHeads() {
       : `${v.p.cycle.toFixed(1)}s`;
     pad.el.classList.toggle('on', pad.on);
     pad.el.classList.toggle('sel', i === selected);
+    const play = pad.el.querySelector('.pad-play');
+    play.textContent = pad.on ? '❚❚' : '▶';
+    play.classList.toggle('playing', pad.on);
+    play.classList.toggle('empty', !pad.buffer);
+    play.disabled = !pad.buffer;
   });
 }
 
@@ -1739,6 +1753,10 @@ function wireGlobal() {
     window.open('viz.html', 'ambient-viz', 'width=1280,height=720');
   });
   $('btn-help').addEventListener('click', () => $('help').classList.remove('hidden'));
+  $('btn-tour').addEventListener('click', () => {
+    $('help').classList.add('hidden');
+    runTour();
+  });
   $('btn-help-close').addEventListener('click', () => $('help').classList.add('hidden'));
   $('help').addEventListener('click', (e) => {
     if (e.target.id === 'help') $('help').classList.add('hidden');
@@ -1866,6 +1884,10 @@ async function begin() {
   }, 33);
 
   window.__ambient = { engine, pads, recorder, input, midi, slots, morpher };
+
+  // First time through, walk them round it. The keyboard shortcuts are a
+  // shortcut — nobody should have to discover them to get a sound out.
+  if (shouldRun()) setTimeout(() => runTour(), 700);
 }
 
 $('btn-begin').addEventListener('click', begin, { once: true });

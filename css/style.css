@@ -404,3 +404,40 @@ body{zoom:var(--ui-scale,1)}
 /* A little more room for the dials when there is screen to spare. */
 /* The dial can grow now that the numbers live beside it. */
 .par{--dial:clamp(46px,4.2vw,86px)}
+
+/* ---------- play buttons on the pads ---------- */
+/* Visible on hover with a mouse, always visible on a touch screen, where
+   there is no hover to reveal anything. */
+/* Always visible, not revealed on hover — it is the first thing a new
+   visitor needs to find, and there is no hover on a touch screen. */
+.pad-play{background:var(--dial-bg);border:1px solid var(--line);color:var(--dim);
+  border-radius:6px;width:clamp(26px,2.1vw,36px);height:clamp(22px,1.8vw,30px);
+  font-size:clamp(9px,0.66vw,12px);line-height:1;cursor:pointer;padding:0;
+  transition:color .15s,border-color .15s,background .15s}
+.pad-play:hover{color:var(--accent);border-color:var(--accent)}
+.pad-play.playing{color:var(--accent);border-color:var(--on-line);
+  background:color-mix(in srgb,var(--accent) 14%,var(--dial-bg))}
+.pad-play.empty{color:var(--faint);opacity:.45;cursor:default}
+
+/* ---------- touch ----------
+   Dragging a pad or a dial must not scroll the page underneath it. */
+.pad canvas,.par,.slot,.dial{touch-action:none}
+@media (hover:none){
+  .par{padding:11px 12px}
+  .mini,.go,.slot button{min-height:34px}
+  .tab{padding:9px 15px}
+}
+
+/* ---------- first-run tour ---------- */
+.tour{position:fixed;inset:0;z-index:60;background:#05070ab0}
+.tour.hidden{display:none}
+.tour-ring{position:absolute;border:2px solid var(--accent);border-radius:12px;
+  box-shadow:0 0 0 9999px #05070ab0,0 0 22px color-mix(in srgb,var(--accent) 60%,transparent);
+  transition:all .28s ease;pointer-events:none}
+.tour-card{position:absolute;width:320px;background:var(--panel);
+  border:1px solid var(--line);border-radius:12px;padding:15px 16px;
+  transition:top .28s ease,left .28s ease;box-shadow:0 12px 40px #0009}
+.tour-card h3{margin:0 0 7px;font-size:13px;color:var(--ink);letter-spacing:.02em}
+.tour-card p{margin:0;font-size:12px;line-height:1.55;color:var(--dim)}
+.tour-foot{display:flex;align-items:center;gap:8px;margin-top:13px}
+.tour-count{flex:1;font:10px ui-monospace,monospace;color:var(--faint)}

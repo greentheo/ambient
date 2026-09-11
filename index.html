@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="theme-color" content="#0b0e13">
 <title>Ambient — a granular instrument</title>
 <link rel="stylesheet" href="css/style.css">
@@ -315,6 +315,19 @@
   </section>
 </main>
 
+<div id="tour" class="tour hidden">
+  <div id="tour-ring" class="tour-ring"></div>
+  <div id="tour-card" class="tour-card">
+    <h3 id="tour-title"></h3>
+    <p id="tour-body"></p>
+    <div class="tour-foot">
+      <span id="tour-count" class="tour-count"></span>
+      <button id="tour-skip" class="mini">Skip</button>
+      <button id="tour-next" class="go narrow">Next</button>
+    </div>
+  </div>
+</div>
+
 <div id="help" class="help hidden">
   <div class="help-card">
     <h2>Playing it</h2>
@@ -327,6 +340,7 @@
       <tr><td>Drag a tile</td><td>X = position in the source, Y = tone</td></tr>
       <tr><td><kbd>Shift</kbd> + drag</td><td>X = pitch, Y = grain size</td></tr>
       <tr><td>Wheel over a tile</td><td>Grain density</td></tr>
+      <tr><td>The <b>&#9654;</b> on a pad</td><td>Fade it in or out, no keyboard needed</td></tr>
       <tr><td><kbd>Shift</kbd> + wheel</td><td>Reverb send</td></tr>
       <tr><td>Drop a file</td><td>Load it onto that pad</td></tr>
       <tr><td>Drag a number</td><td>Adjust it (vertical)</td></tr>
@@ -336,7 +350,12 @@
     <p class="tip">For the classic drifting-loops effect, give each pad an
     unrelated <b>Cycle</b> — 7.3, 11.1, 4.7, 13.9. There is no shared clock,
     so they will not realign for hours.</p>
-    <button class="mini" id="btn-help-close">Close</button>
+    <p class="tip">Every pad has a <b>&#9654;</b> button, and every dial can be
+    dragged — you never have to touch the keyboard if you would rather not.</p>
+    <div class="row">
+      <button class="mini" id="btn-tour">Show me around again</button>
+      <button class="mini" id="btn-help-close">Close</button>
+    </div>
   </div>
 </div>
 

@@ -27,6 +27,28 @@ browser hold on to stale ES modules, which makes editing one look like it had
 no effect. Then open <http://localhost:8791> and press **Begin**. Browsers will not start
 audio without a click first.
 
+## First time
+
+Press **Begin** and a short tour walks you round the instrument, pointing at
+the real thing at each step rather than describing it. It runs once; **?** in
+the top bar has the full key reference and a button to run it again.
+
+You never have to touch the keyboard. Every pad has a **▶** that fades it in
+and out, every dial is drag-to-change, and every panel control is a normal
+slider or button. The keys below are shortcuts, not the only way in.
+
+### On a phone or tablet
+
+It works. Web Audio, the recorder and microphone capture all run on mobile,
+and the hosted copy is served over HTTPS, which is what the mic needs. The
+layout collapses to a single column, controls get larger tap targets, and pads
+and dials set `touch-action: none` so dragging them sculpts the sound instead
+of scrolling the page.
+
+Web MIDI is not available on iOS, so a controller is desktop only. Eight dense
+voices will also work a phone harder than a laptop — two or three is a better
+starting point there.
+
 ## Playing it
 
 | | |
