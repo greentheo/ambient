@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0e13">
+<title>Ambient — a granular instrument</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="gate" class="gate">
+  <div class="gate-card">
+    <h1>Ambient</h1>
+    <p class="sub">A granular instrument. No timeline, no MIDI — it is always running, you sculpt it.</p>
+    <button id="btn-begin" class="begin">Begin</button>
+    <p class="hint">Headphones recommended. Browsers require a click before audio can start.</p>
+  </div>
+</div>
+
+<header class="bar">
+  <div class="brand"><b>Ambient</b><span class="tag">granular</span></div>
+
+  <div class="transport">
+    <button id="btn-rec" class="rec" title="Record the master output (Space)">
+      <span class="dot"></span><span id="rec-label">Record</span>
+    </button>
+    <span id="rec-time" class="time">0:00</span>
+    <span id="cap-badge" class="capbadge" hidden></span>
+    <button id="btn-stop" class="stop" title="Fade everything out (Esc). Press again to cut the tails too.">Stop all</button>
+  </div>
+
+  <div class="transport clock">
+    <button id="btn-clock" class="clockbtn" title="Start / stop the clock">Clock</button>
+    <span id="beats" class="beats"></span>
+    <label class="tnum">BPM <input id="bpm" type="number" min="20" max="300" step="1" value="90"></label>
+    <label class="tnum">/bar <input id="bpb" type="number" min="1" max="16" step="1" value="4"></label>
+    <button id="btn-metro" class="mini" title="Metronome click">Click</button>
+  </div>
+
+  <div class="meters">
+    <div class="meter"><i id="meter-fill"></i></div>
+    <span id="grains" class="stat">0 grains</span>
+  </div>
+
+  <label class="master">Master
+    <input id="master" type="range" min="0" max="1" step="0.01" value="0.8">
+  </label>
+
+  <label class="cols">Look
+    <select id="palette">
+      <option value="slate">Slate</option>
+      <option value="ember">Ember</option>
+      <option value="neon">Neon</option>
+      <option value="tide">Tide</option>
+      <option value="paper">Paper</option>
+    </select>
+  </label>
+  <label class="cols size">Size
+    <select id="ui-size">
+      <option value="0.85">XS</option>
+      <option value="1" selected>S</option>
+      <option value="1.15">M</option>
+      <option value="1.3">L</option>
+      <option value="1.5">XL</option>
+      <option value="1.75">XXL</option>
+    </select>
+  </label>
+  <span id="world-clock" class="wclock" hidden></span>
+  <button id="btn-viz" class="mini" title="Open the world in its own window">World</button>
+  <button id="btn-help" class="mini" title="Keyboard reference">?</button>
+</header>
+
+<main class="app">
+
+  <section class="pads" id="pads"></section>
+
+  <section class="workspace">
+
+  <div class="leftcol">
+  <aside class="scenes-strip">
+    <div class="strip-label">Scenes</div>
+    <div class="slots" id="slots"></div>
+    <div class="morph-inline">
+      <label for="morph-time">Morph</label>
+      <input id="morph-time" type="range" min="1" max="180" step="1" value="30">
+      <span id="morph-v" class="v">30s</span>
+    </div>
+  </aside>
+
+  <div class="side-col">
+    <div class="panel">
+      <div class="panel-head"><h2>Stretch</h2><span class="note">spectral, PaulStretch-style</span></div>
+      <div class="stack">
+        <label>Factor <span id="st-f-v" class="v">&times;8</span>
+          <input id="st-factor" type="range" min="2" max="40" step="1" value="8"></label>
+        <button class="go" id="btn-stretch">Stretch this pad</button>
+        <button class="go" id="btn-revert" disabled>Revert</button>
+        <p class="note" id="st-status">Throws the phase away and smears what is left.</p>
+      </div>
+    </div>
+
+<div class="panel">
+      <div class="panel-head"><h2>Reverb</h2><span class="note">impulse is rebuilt live</span></div>
+      <div class="stack">
+        <label>Size <span id="v-size" class="v">7.0s</span>
+          <input id="rv-size" type="range" min="1" max="15" step="0.1" value="7"></label>
+        <label>Decay <span id="v-decay" class="v">2.6</span>
+          <input id="rv-decay" type="range" min="1" max="8" step="0.1" value="2.6"></label>
+        <label>Darkness <span id="v-dark" class="v">0.62</span>
+          <input id="rv-dark" type="range" min="0" max="1" step="0.01" value="0.62"></label>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Tape delay</h2><span class="note">wobbles and darkens</span></div>
+      <div class="stack">
+        <label>Time <span id="v-dtime" class="v">2.40s</span>
+          <input id="dl-time" type="range" min="0.1" max="5" step="0.01" value="2.4"></label>
+        <label>Feedback <span id="v-dfb" class="v">0.55</span>
+          <input id="dl-fb" type="range" min="0" max="0.92" step="0.01" value="0.55"></label>
+        <label>Tone <span id="v-dtone" class="v">2200Hz</span>
+          <input id="dl-tone" type="range" min="300" max="12000" step="10" value="2200"></label>
+      </div>
+    </div>
+    </div>
+
+
+    </div>
+
+<div class="tabs-col">
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-tab="pad">Pad</button>
+    <button class="tab" data-tab="sources">Sources</button>
+    <button class="tab" data-tab="scenes">Session</button>
+    <button class="tab" data-tab="midi">MIDI</button>
+  </nav>
+
+  <section class="sheet" data-sheet="pad">
+    <div class="panel wide">
+      <div class="panel-head">
+        <h2 id="edit-title">Pad 1</h2>
+        <div class="panel-actions">
+          <label class="cols">Sync
+            <select id="sync-bars">
+              <option value="0">free</option>
+              <option value="0.5">½ bar</option>
+              <option value="1">1 bar</option>
+              <option value="2">2 bars</option>
+              <option value="4">4 bars</option>
+              <option value="8">8 bars</option>
+              <option value="16">16 bars</option>
+            </select>
+          </label>
+          <label class="cols">Filter
+            <select id="filter-type">
+              <option value="lowpass">Low</option>
+              <option value="bandpass">Band</option>
+              <option value="highpass">High</option>
+            </select>
+          </label>
+          <label class="cols">Cols
+            <select id="cols">
+              <option>2</option><option>3</option><option selected>4</option>
+              <option>5</option><option>6</option><option>7</option><option>8</option>
+            </select>
+          </label>
+          <button class="mini" id="btn-dir" title="Reverse the read head">&#8644;</button>
+          <button class="mini" id="btn-load" title="Load an audio file">Load&hellip;</button>
+          <input type="file" id="file-input" accept="audio/*" hidden>
+        </div>
+      </div>
+      <div class="params" id="params"></div>
+    </div>
+
+  </section>
+
+  <section class="sheet hidden" data-sheet="sources">
+    <div class="panel">
+      <div class="panel-head"><h2>Forge</h2><span class="note">make raw material</span></div>
+      <div class="stack">
+        <label>Source<select id="forge-kind"></select></label>
+        <label>Root<select id="forge-root"></select></label>
+        <label>Character <span id="forge-char-v" class="v">0.70</span>
+          <input id="forge-char" type="range" min="0" max="1" step="0.01" value="0.7"></label>
+        <label>Length <span id="forge-len-v" class="v">10s</span>
+          <input id="forge-len" type="range" min="4" max="30" step="1" value="10"></label>
+        <button class="go" id="btn-forge">Forge &rarr; selected pad</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Input</h2><span class="note">mic or instrument</span></div>
+      <div class="stack">
+        <button class="go" id="btn-mic">Enable input</button>
+        <div class="in-meter"><i id="in-fill"></i></div>
+        <label class="check"><input type="checkbox" id="cap-monitor"> Monitor through reverb <em>(headphones)</em></label>
+        <label>Capture length <span id="cap-len-v" class="v">8s</span>
+          <input id="cap-len" type="range" min="2" max="30" step="1" value="8"></label>
+        <button class="go" id="btn-capture" disabled>Capture &rarr; selected pad</button>
+        <p class="note" id="cap-status">Enable input to record a mic or an instrument.</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Live</h2><span class="note">granulate input as you play</span></div>
+      <div class="stack">
+        <button class="go" id="btn-live" disabled>Live &rarr; selected pad</button>
+        <label>Window <span id="live-w-v" class="v">8s</span>
+          <input id="live-window" type="range" min="1" max="20" step="0.5" value="8"></label>
+        <button class="go" id="btn-freeze" disabled>Freeze</button>
+        <button class="go" id="btn-keep" disabled>Keep window as a sample</button>
+        <p class="note" id="live-status">Needs input enabled.</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Freesound</h2><span class="note">field recordings</span></div>
+      <div class="stack">
+        <label>API key <a class="lnk" href="https://freesound.org/apiv2/apply/" target="_blank" rel="noopener">get one</a>
+          <input id="fs-key" type="password" placeholder="paste key" autocomplete="off"></label>
+        <div class="row">
+          <input id="fs-q" type="search" placeholder="drone, rain, cello&hellip;" autocomplete="off">
+          <button class="go narrow" id="btn-fs">Search</button>
+        </div>
+        <div class="results" id="fs-results"></div>
+        <p class="note" id="fs-status">Loads preview renders. Credit the source when you release.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sheet hidden" data-sheet="scenes">
+    <div class="panel">
+      <div class="panel-head"><h2>Session</h2><span class="note">pass it around</span></div>
+      <div class="stack">
+        <button class="go" id="btn-save">Save session</button>
+        <button class="go" id="btn-open">Open session</button>
+        <input type="file" id="session-input" accept=".json,application/json" hidden>
+        <label class="check"><input type="checkbox" id="save-audio" checked>
+          Include recorded audio <em id="save-audio-size"></em></label>
+        <p class="note" id="session-status">Captures and live-kept windows exist
+        nowhere else, so they are written into the session file. Forged sources
+        are rebuilt from their description and cost nothing.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sheet hidden" data-sheet="midi">
+    <div class="panel wide">
+      <div class="panel-head"><h2>MIDI</h2><span class="note" id="midi-status">not connected</span></div>
+      <div class="stack">
+        <button class="go" id="btn-midi">Connect MIDI</button>
+        <p class="note warn" id="map-warning" style="display:none"></p>
+        <div class="monitor">
+          <span class="mon-label">Incoming</span>
+          <code id="mon-last">nothing yet — move a knob or hit a pad</code>
+          <span id="mon-count" class="mon-count">0</span>
+        </div>
+        <div class="row">
+          <button class="go" id="btn-learn-pads" disabled>Learn 8 pads</button>
+          <button class="go" id="btn-learn-knobs" disabled>Learn 8 knobs</button>
+          <button class="go" id="btn-learn-scenes" disabled>Learn 4 scene keys</button>
+        </div>
+        <div class="row">
+          <button class="go" id="btn-learn-launch" disabled>Learn 8 launch keys</button>
+          <button class="go" id="btn-learn-macros" disabled>Learn 4 swell keys</button>
+          <button class="go" id="btn-learn-fx" disabled>Learn 4 effect pads</button>
+        </div>
+        <div class="mapgroup"><h4>Effect pads</h4><div id="fxmap"></div></div>
+        <div class="row">
+          <button class="go" id="btn-learn-bank" disabled>Learn a bank of 8 &rarr; tracks 1-8</button>
+        </div>
+        <div class="mapgroup"><h4>Banks — a row across all tracks</h4><div id="bankmap"></div></div>
+        <p class="note" id="learn-status">Hit each pad, or turn each knob, in the order you want them.</p>
+        <div class="mapgroup"><h4>Track pads</h4><div class="knobmap" id="padmap"></div></div>
+        <div class="mapgroup"><h4>Knobs — selected pad</h4><div class="knobmap" id="knobmap"></div></div>
+        <div class="mapgroup"><h4>Scene keys</h4><div class="knobmap" id="scenemap"></div></div>
+        <div class="mapgroup"><h4>Launch keys</h4><div class="knobmap" id="launchmap"></div></div>
+        <div class="mapgroup"><h4>Swell keys</h4><div id="macromap"></div></div>
+        <label class="cols knobmode">Knobs
+          <select id="knob-mode">
+            <option value="pickup">Pick up (catch the value)</option>
+            <option value="jump">Jump (respond immediately)</option>
+            <option value="relative">Relative (nudge from here)</option>
+          </select>
+        </label>
+        <div class="row">
+          <button class="go" id="btn-midi-save" disabled>Save mapping</button>
+          <button class="go" id="btn-midi-clear" disabled>Clear mapping</button>
+        </div>
+        <div class="row">
+          <button class="go" id="btn-preset-save" disabled>Save preset&hellip;</button>
+          <button class="go" id="btn-preset-load">Load preset&hellip;</button>
+          <input type="file" id="preset-input" accept=".json,application/json" hidden>
+        </div>
+        <p class="note" id="save-status"></p>
+        <p class="note">Launch keys start pads — play several together and they
+        all come in as one gesture; play the same chord again and they all go
+        out. Swell keys lean on a parameter while held and let it sink back on
+        release. A pad selects its track; hit the one already selected to
+        switch it on or off. Scene keys morph to A&ndash;D over the Scenes morph
+        time. Any other key plays notes into the selected pad&rsquo;s cloud — hold
+        a chord and the grains spread across it. Knobs follow whichever pad you
+        last touched, and stay inert until you turn them past the current value.</p>
+      </div>
+    </div>
+  </section>
+
+  </div>
+
+  <aside class="orbit-strip">
+    <div class="strip-label">Cycles <em>— eight bodies, eight clocks</em></div>
+    <canvas id="phase"></canvas>
+  </aside>
+
+  </section>
+</main>
+
+<div id="help" class="help hidden">
+  <div class="help-card">
+    <h2>Playing it</h2>
+    <table>
+      <tr><td><kbd>1</kbd>–<kbd>8</kbd></td><td>Fade a pad in / out</td></tr>
+      <tr><td><kbd>Space</kbd></td><td>Start / stop recording</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Fade everything out; again within 2s cuts the tails</td></tr>
+      <tr><td><kbd>C</kbd> or <kbd>Shift</kbd>+<kbd>Space</kbd></td><td>Capture input to the selected pad</td></tr>
+      <tr><td><kbd>&larr;</kbd> <kbd>&rarr;</kbd></td><td>Move between tabs</td></tr>
+      <tr><td>Drag a tile</td><td>X = position in the source, Y = tone</td></tr>
+      <tr><td><kbd>Shift</kbd> + drag</td><td>X = pitch, Y = grain size</td></tr>
+      <tr><td>Wheel over a tile</td><td>Grain density</td></tr>
+      <tr><td><kbd>Shift</kbd> + wheel</td><td>Reverb send</td></tr>
+      <tr><td>Drop a file</td><td>Load it onto that pad</td></tr>
+      <tr><td>Drag a number</td><td>Adjust it (vertical)</td></tr>
+      <tr><td>MIDI pad</td><td>Selects its track; hit it again to switch it</td></tr>
+      <tr><td><kbd>a</kbd> <kbd>w</kbd> <kbd>s</kbd> <kbd>e</kbd> <kbd>d</kbd>&hellip;</td><td>Play notes into the selected pad's cloud</td></tr>
+    </table>
+    <p class="tip">For the classic drifting-loops effect, give each pad an
+    unrelated <b>Cycle</b> — 7.3, 11.1, 4.7, 13.9. There is no shared clock,
+    so they will not realign for hours.</p>
+    <button class="mini" id="btn-help-close">Close</button>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
