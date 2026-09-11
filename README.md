@@ -1,5 +1,7 @@
 # Ambient
 
+**Live at [greentheo.github.io/ambient](https://greentheo.github.io/ambient/)**
+
 A granular instrument for the browser. No timeline, no MIDI, no DAW — it is
 always running, and you sculpt it with the keyboard and mouse. When something
 good happens, you record it.
@@ -13,8 +15,11 @@ a big shared reverb.
 Any static server works — ES modules and `AudioWorklet` both need real HTTP,
 so opening `index.html` from the filesystem will not work.
 
+It also runs from the hosted copy above with nothing installed. To work on it
+locally:
+
 ```bash
-python3 ambient/tools/serve.py 8791
+python3 tools/serve.py 8791
 ```
 
 This is `http.server` with caching turned off — the plain version lets the
