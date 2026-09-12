@@ -450,6 +450,11 @@ input[type=search]:focus,input[type=password]:focus{outline:none;border-color:va
 /* ---------- narrow screens ---------- */
 @media (max-width:760px){
   .app{padding:10px}
+  /* Eight full-height pads stack into a very long page on a phone. Shorter
+     pads keep the whole instrument within a few flicks. */
+  .pad canvas{height:92px}
+  .pads{gap:8px}
+  .pad-head{padding:6px 10px}
   /* The pad header carries five controls; on a phone it needs its own row. */
   .panel-actions{margin-left:0;width:100%}
   .bar{gap:9px;padding:8px 10px}

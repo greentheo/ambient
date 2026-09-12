@@ -104,6 +104,21 @@ export function runTour(onDone) {
   const end = () => {
     veil.classList.add('hidden');
     markSeen();
+    // Walk them back to the top. The steps scroll down the page, and on a
+    // phone the layout is tall enough that finishing mid-way leaves you
+    // staring at empty pads, which reads as a blank screen.
+    //
+    // A step's scrollIntoView is queued on a timer, so it can land after this
+    // and undo it — hence the second pass. Both scrollers are set because
+    // whether the document or the body is the scrolling element depends on
+    // the overflow rules in play.
+    const toTop = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    toTop();
+    setTimeout(toTop, 320);
     if (onDone) onDone();
   };
 
