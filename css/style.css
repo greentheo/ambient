@@ -425,10 +425,20 @@ input[type=search]:focus,input[type=password]:focus{outline:none;border-color:va
 .pad-play.empty{color:var(--faint);opacity:.45;cursor:default}
 
 /* ---------- touch ----------
-   Dragging a pad or a dial must not scroll the page underneath it. */
-.pad canvas,.par,.slot,.dial{touch-action:none}
+   A drag has to belong to the page by default, or there is no way to scroll
+   past an instrument that fills the screen. The pad claims the gesture only
+   once it has been held (see wirePad), and on a dial only the ring itself
+   takes the drag — the rest of the cell scrolls. */
+.pad canvas{touch-action:pan-y}
+.dial{touch-action:none}
+.slot{touch-action:pan-y}
+/* Held, and now sculpting rather than scrolling. */
+.pad.grabbed{border-color:var(--accent)}
+.pad.grabbed canvas{touch-action:none}
 @media (hover:none){
   .par{padding:11px 12px}
+  /* Bigger ring to aim at, since it is the only part that takes a drag. */
+  .par{--dial:clamp(62px,17vw,86px)}
   .mini,.go,.slot button{min-height:34px}
   .tab{padding:9px 15px}
 }

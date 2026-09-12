@@ -49,9 +49,22 @@ nothing.
 
 It works. Web Audio, the recorder and microphone capture all run on mobile,
 and the hosted copy is served over HTTPS, which is what the mic needs. The
-layout collapses to a single column, controls get larger tap targets, and pads
-and dials set `touch-action: none` so dragging them sculpts the sound instead
-of scrolling the page.
+layout collapses to a single column and controls get larger tap targets.
+
+Touch needs different gestures from a mouse, because the instrument fills the
+screen and a drag has to be able to scroll it:
+
+| | |
+|---|---|
+| **Tap** a pad | start or stop it |
+| **Press and hold**, then slide | sculpt — move through the sound and open or close the filter |
+| **Swipe** | scrolls the page, as anywhere else |
+
+A pad only takes the gesture away from the page once it has actually been
+held; until then a drag belongs to the page. The pad outlines itself and the
+phone gives a short buzz when it has hold of the sound. On a dial, only the
+ring itself takes a drag — the rest of the cell scrolls — so the ring is drawn
+larger on touch screens.
 
 Web MIDI is not available on iOS, so a controller is desktop only. Eight dense
 voices will also work a phone harder than a laptop — two or three is a better

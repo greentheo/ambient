@@ -11,13 +11,19 @@ export const STEPS = [
     sel: '.pad',
     title: 'Eight pads',
     body: 'Each one holds a sound and grinds it into overlapping grains. Three '
-        + 'are already loaded. Press the ▶ on a pad — or the number keys 1–8 — '
-        + 'to fade one in.',
+        + 'are already loaded. '
+        + (matchMedia('(hover:none)').matches
+          ? 'Tap one to fade it in.'
+          : 'Press the ▶ on a pad — or the number keys 1–8 — to fade one in.'),
   },
   {
     sel: '.pad canvas',
     title: 'Play the waveform',
-    body: 'Drag across a pad to move through the sound and open or close its '
+    body: matchMedia('(hover:none)').matches
+      ? 'Tap a pad to start or stop it. Press and hold, then slide, to move '
+        + 'through the sound and open or close its filter — that is the main '
+        + 'way you play it. An ordinary swipe still scrolls the page.'
+      : 'Drag across a pad to move through the sound and open or close its '
         + 'filter. Hold Shift while dragging for pitch and grain size. This is '
         + 'the main way you play it.',
   },

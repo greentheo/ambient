@@ -227,15 +227,28 @@ function refreshPadPanel() {
   buildParams();
 }
 
+// Touch and mouse want different things from a pad.
+//
+// With a mouse, dragging sculpts immediately — there is a scrollbar for
+// scrolling. On a touch screen the pad covers most of the display, so a drag
+// has to scroll the page or the instrument is unusable. That leaves a tap to
+// play and a press-and-hold to take hold of the sound.
+const HOLD_MS = 350;
+const SLOP = 10;        // movement that still counts as a tap
+
 function wirePad(pad) {
   const c = pad.canvas;
-  let dragging = false;
+  const i = pad.index;
+  let dragging = false;      // mouse
+  let holdTimer = null;      // touch
+  let grabbed = false;
+  let startX = 0, startY = 0, moved = false;
 
   const apply = (e) => {
     const r = c.getBoundingClientRect();
     const x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
     const y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
-    const v = engine.voices[pad.index];
+    const v = engine.voices[i];
     if (e.shiftKey) {
       v.set('pitch', denorm(PARAMS.pitch, x));
       v.set('grain', denorm(PARAMS.grain, 1 - y));
@@ -243,28 +256,74 @@ function wirePad(pad) {
       v.set('position', x);
       v.set('cutoff', denorm(PARAMS.cutoff, 1 - y));
     }
-    if (pad.index === selected) buildParams();
+    if (i === selected) buildParams();
+  };
+
+  const grab = (e) => {
+    grabbed = true;
+    pad.el.classList.add('grabbed');
+    // Only once the sound is actually being held does the pad stop the page
+    // scrolling — up to that moment a drag has to belong to the page.
+    c.style.touchAction = 'none';
+    try { c.setPointerCapture(e.pointerId); } catch {}
+    if (navigator.vibrate) navigator.vibrate(12);
+    apply(e);
+  };
+
+  const letGo = (e) => {
+    grabbed = false;
+    pad.el.classList.remove('grabbed');
+    c.style.touchAction = '';
+    try { c.releasePointerCapture(e.pointerId); } catch {}
   };
 
   c.addEventListener('pointerdown', (e) => {
-    select(pad.index);
-    dragging = true;
-    c.setPointerCapture(e.pointerId);
-    apply(e);
+    select(i);
+    if (e.pointerType !== 'touch') {
+      dragging = true;
+      c.setPointerCapture(e.pointerId);
+      apply(e);
+      return;
+    }
+    startX = e.clientX; startY = e.clientY; moved = false;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => { if (!moved) grab(e); }, HOLD_MS);
   });
-  c.addEventListener('pointermove', (e) => { if (dragging) apply(e); });
-  c.addEventListener('pointerup', (e) => {
-    dragging = false;
-    try { c.releasePointerCapture(e.pointerId); } catch {}
+
+  c.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'touch') { if (dragging) apply(e); return; }
+    if (grabbed) { apply(e); return; }
+    if (!moved && Math.hypot(e.clientX - startX, e.clientY - startY) > SLOP) {
+      // They are scrolling, not holding. Stand down and let the page have it.
+      moved = true;
+      clearTimeout(holdTimer);
+    }
+  });
+
+  const endTouch = (e) => {
+    if (e.pointerType !== 'touch') {
+      dragging = false;
+      try { c.releasePointerCapture(e.pointerId); } catch {}
+      return;
+    }
+    clearTimeout(holdTimer);
+    if (grabbed) { letGo(e); return; }
+    // A tap that never became a hold or a scroll starts or stops the pad.
+    if (!moved && pad.buffer) togglePad(i);
+  };
+  c.addEventListener('pointerup', endTouch);
+  c.addEventListener('pointercancel', (e) => {
+    clearTimeout(holdTimer);
+    if (grabbed) letGo(e);
   });
 
   c.addEventListener('wheel', (e) => {
     e.preventDefault();
-    const v = engine.voices[pad.index];
+    const v = engine.voices[i];
     const dir = e.deltaY > 0 ? -1 : 1;
     if (e.shiftKey) v.set('reverbSend', v.p.reverbSend + dir * 0.04);
     else v.set('density', v.p.density * (dir > 0 ? 1.09 : 1 / 1.09));
-    if (pad.index === selected) buildParams();
+    if (i === selected) buildParams();
   }, { passive: false });
 
   const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
@@ -273,7 +332,7 @@ function wirePad(pad) {
   pad.el.addEventListener('drop', async (e) => {
     stop(e);
     pad.el.classList.remove('drop');
-    if (e.dataTransfer.files[0]) await loadFileToPad(e.dataTransfer.files[0], pad.index);
+    if (e.dataTransfer.files[0]) await loadFileToPad(e.dataTransfer.files[0], i);
   });
 }
 
