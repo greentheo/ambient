@@ -74,7 +74,7 @@ body{
 .hint{color:var(--faint);font-size:11px;margin-top:18px}
 
 /* ---------- top bar ---------- */
-.bar{display:flex;align-items:center;gap:18px;padding:9px 16px;
+.bar{display:flex;align-items:center;gap:14px;padding:9px 16px;flex-wrap:wrap;
   border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:20}
 .brand{letter-spacing:.05em}
 .brand b{font-weight:600}
@@ -174,10 +174,10 @@ body{
 .sheet .wide{grid-column:span 2}
 @media (max-width:760px){.sheet{grid-template-columns:1fr}.sheet .wide{grid-column:span 1}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
-.panel-head{display:flex;align-items:baseline;gap:9px;margin-bottom:11px}
+.panel-head{display:flex;align-items:baseline;gap:9px;margin-bottom:11px;flex-wrap:wrap}
 .panel-head h2{margin:0;font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase}
 .panel-head .note{color:var(--faint);font-size:10px}
-.panel-actions{margin-left:auto;display:flex;gap:6px}
+.panel-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 
 /* ---------- param grid ---------- */
 /* Column count is user-set, so the on-screen layout can be made to match
@@ -336,8 +336,13 @@ input[type=search]:focus,input[type=password]:focus{outline:none;border-color:va
 
 /* ---------- ui scale ---------- */
 /* One knob for overall size. Useful on a big monitor read from across the
-   room, which is the position you are in while actually performing. */
-body{zoom:var(--ui-scale,1)}
+   room, which is the position you are in while actually performing.
+   
+   It goes on the content, never on <body>: a zoom declaration makes its
+   element the containing block for position:fixed descendants, so zooming the
+   body sizes the gate, help and tour overlays to the document rather than to
+   the screen — which on a phone puts them off the edge entirely. */
+.bar,.app{zoom:var(--ui-scale,1)}
 .size{margin-left:4px}
 
 /* ---------- world clock ---------- */
@@ -441,3 +446,17 @@ body{zoom:var(--ui-scale,1)}
 .tour-card p{margin:0;font-size:12px;line-height:1.55;color:var(--dim)}
 .tour-foot{display:flex;align-items:center;gap:8px;margin-top:13px}
 .tour-count{flex:1;font:10px ui-monospace,monospace;color:var(--faint)}
+
+/* ---------- narrow screens ---------- */
+@media (max-width:760px){
+  .app{padding:10px}
+  /* The pad header carries five controls; on a phone it needs its own row. */
+  .panel-actions{margin-left:0;width:100%}
+  .bar{gap:9px;padding:8px 10px}
+  .meters{margin-left:0}
+  .meter{width:72px}
+  /* Room for the things you actually touch on a phone. */
+  .clock,.master,.stat{display:none}
+  .gate-card{max-width:calc(100vw - 32px)}
+  .tour-card{width:calc(100vw - 28px);left:14px !important}
+}
