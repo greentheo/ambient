@@ -60,6 +60,13 @@ screen and a drag has to be able to scroll it:
 | **Press and hold**, then slide | sculpt — move through the sound and open or close the filter |
 | **Swipe** | scrolls the page, as anywhere else |
 
+On a phone the panel order changes too: the pad's own controls sit directly
+under the clips, with scenes and the shared effects below them, and **the
+orbits are switched off** — a canvas repainting every frame is battery spent
+on something you would have to scroll to see. Drawing is also skipped for any
+waveform currently off screen, which on a page several screens long is most
+of them.
+
 A pad only takes the gesture away from the page once it has actually been
 held; until then a drag belongs to the page. The pad outlines itself and the
 phone gives a short buzz when it has hold of the sound. On a dial, only the

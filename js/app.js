@@ -671,6 +671,12 @@ function drawPhase(dt) {
   }
 }
 
+/** Is any part of this element within the viewport? */
+function onScreen(el) {
+  const r = el.getBoundingClientRect();
+  return r.bottom > -120 && r.top < innerHeight + 120 && r.width > 0;
+}
+
 let lastFrameAt = performance.now();
 
 function frame() {
@@ -681,8 +687,13 @@ function frame() {
     const now = performance.now();
     const dt = Math.min(0.05, (now - lastFrameAt) / 1000) || 0.016;
     lastFrameAt = now;
-    for (const pad of pads) drawPad(pad);
-    drawPhase(dt);
+
+    // Only draw what is actually on screen. On a phone the page is several
+    // screens long, and repainting eight waveforms nobody can see is battery
+    // spent for nothing.
+    for (const pad of pads) if (onScreen(pad.canvas)) drawPad(pad);
+    const phase = $('phase');
+    if (phase.offsetParent !== null && onScreen(phase)) drawPhase(dt);
     paintLiveParams();
     paintBeats();
 
