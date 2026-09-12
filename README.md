@@ -37,6 +37,14 @@ You never have to touch the keyboard. Every pad has a **▶** that fades it in
 and out, every dial is drag-to-change, and every panel control is a normal
 slider or button. The keys below are shortcuts, not the only way in.
 
+### Deploying
+
+GitHub Pages serves static files with a ten minute cache, so a browser that
+has already loaded the app will keep the old stylesheet for a while after a
+push. The stylesheet link carries a version query for that reason — **bump it
+whenever `css/style.css` changes**, or a layout fix will appear to have done
+nothing.
+
 ### On a phone or tablet
 
 It works. Web Audio, the recorder and microphone capture all run on mobile,
