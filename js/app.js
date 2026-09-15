@@ -223,6 +223,14 @@ function refreshPadPanel() {
   $('btn-revert').disabled = !pad.original;
   $('filter-type').value = engine.voices[selected].filterType;
   $('sync-bars').value = String(engine.voices[selected].syncBars || 0);
+  $('play-mode').value = engine.voices[selected].mode;
+  // In straight playback the grain controls are not doing anything, so say so
+  // rather than leaving them looking live.
+  const straight = engine.voices[selected].mode === 'straight';
+  for (const el of $('params').children) {
+    el.classList.toggle('inert',
+      straight && ['grain', 'density', 'spray', 'reverse', 'detune', 'cycle', 'position'].includes(el.dataset.k));
+  }
   $('btn-dir').style.color = engine.voices[selected].dir < 0 ? 'var(--accent)' : '';
   buildParams();
 }
@@ -1481,6 +1489,40 @@ function wireSize() {
   apply();
 }
 
+// Everything neutral: the sample as recorded, a touch of space, nothing
+// moving. The starting point for a drum loop, and the way back from having
+// tortured a pad past recognition.
+const PLAIN = {
+  pitch: 0, detune: 0, reverse: 0, spray: 0, spread: 0.35,
+  cutoff: 18000, sweep: 0, rate: 0.07,
+  reverbSend: 0.14, delaySend: 0, level: 0.85,
+  attack: 0.06, release: 0.25,
+  grain: 800, density: 2,
+};
+
+function makePlain() {
+  const v = engine.voices[selected];
+  v.setMode('straight');
+  v.setFilterType('lowpass');
+  v.dir = 1;
+  for (const [k, val] of Object.entries(PLAIN)) v.set(k, val);
+  // A straight pad usually wants to sit on the bar rather than drift.
+  if (pads[selected].buffer) {
+    v.set('cycle', Math.min(PARAMS.cycle.max, pads[selected].buffer.duration));
+  }
+  $('play-mode').value = 'straight';
+  refreshPadPanel();
+  renderPadHeads();
+}
+
+function wirePlayMode() {
+  $('play-mode').addEventListener('change', (e) => {
+    engine.voices[selected].setMode(e.target.value);
+    refreshPadPanel();
+  });
+  $('btn-plain').addEventListener('click', makePlain);
+}
+
 function wireFilterType() {
   $('filter-type').addEventListener('change', (e) => {
     engine.voices[selected].setFilterType(e.target.value);
@@ -1708,7 +1750,14 @@ function wireTransport() {
 
   $('sync-bars').addEventListener('change', (e) => {
     const v = +e.target.value;
-    engine.voices[selected].syncBars = v;
+    const voice = engine.voices[selected];
+    voice.syncBars = v;
+    // Re-launch a straight loop on the next downbeat, so locking it to the
+    // bar actually puts it on the bar.
+    if (voice.mode === 'straight' && voice.playing && v > 0 && t.running) {
+      voice.stopLoop();
+      voice.startLoop(t.nextDownbeat(), t);
+    }
     // Locking a pad only means anything if the clock is running.
     if (v > 0 && !t.running) $('btn-clock').click();
     buildParams();
@@ -1912,6 +1961,7 @@ async function begin() {
   wireTransport();
   wireSize();
   wireFilterType();
+  wirePlayMode();
   wireKnobMode();
   buildSlots();
   wireTabs();

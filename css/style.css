@@ -491,3 +491,7 @@ input[type=search]:focus,input[type=password]:focus{outline:none;border-color:va
   .tabs-col{order:1}
   .leftcol{order:2}
 }
+
+/* A control that the current playback mode ignores. */
+.par.inert{opacity:.32}
+.par.inert .dial{filter:grayscale(1)}

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="theme-color" content="#0b0e13">
 <title>Ambient — a granular instrument</title>
-<link rel="stylesheet" href="css/style.css?v=20260912e">
+<link rel="stylesheet" href="css/style.css?v=20260914a">
 </head>
 <body>
 
@@ -140,6 +140,13 @@
       <div class="panel-head">
         <h2 id="edit-title">Pad 1</h2>
         <div class="panel-actions">
+          <label class="cols">Mode
+            <select id="play-mode">
+              <option value="grains">Grains</option>
+              <option value="straight">Straight</option>
+            </select>
+          </label>
+          <button class="mini" id="btn-plain" title="Reset this pad to plain playback">Plain</button>
           <label class="cols">Sync
             <select id="sync-bars">
               <option value="0">free</option>

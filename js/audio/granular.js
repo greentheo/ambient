@@ -106,6 +106,10 @@ export class GranularVoice {
     this.live = false;
     this.buffer = buf;
     this.reversed = reverseBuffer(this.ctx, buf);
+    if (this.mode === 'straight') {
+      this.stopLoop();
+      if (this.playing) this.startLoop();
+    }
   }
 
   /**
@@ -120,6 +124,44 @@ export class GranularVoice {
 
   setNotes(semitones) {
     this.notes = semitones;
+  }
+
+  setMode(mode) {
+    if (mode === this.mode) return;
+    this.mode = mode;
+    this.stopLoop();
+    if (mode === 'straight' && this.playing) this.startLoop();
+  }
+
+  /** Rate that makes the sample fill its synced bars exactly, else pitch. */
+  loopRate(transport) {
+    const semis = this.p.pitch;
+    if (this.syncBars > 0 && transport) {
+      const want = this.syncBars * transport.secondsPerBar;
+      if (want > 0 && this.buffer) return this.buffer.duration / want;
+    }
+    return Math.pow(2, semis / 12);
+  }
+
+  startLoop(at, transport) {
+    if (!this.buffer || this.loop) return;
+    const when = at ?? this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.buffer;
+    src.loop = true;
+    src.playbackRate.value = this.loopRate(transport);
+    src.connect(this.input);
+    src.start(when);
+    this.loop = src;
+    this.loopAt = when;
+  }
+
+  stopLoop() {
+    if (!this.loop) return;
+    try { this.loop.stop(this.ctx.currentTime + 0.02); } catch {}
+    const dead = this.loop;
+    setTimeout(() => dead.disconnect(), 300);
+    this.loop = null;
   }
 
   /**
@@ -168,6 +210,7 @@ export class GranularVoice {
     if (this.playing || !this.buffer) return;
     this.playing = true;
     this.releaseUntil = 0;
+    if (this.mode === 'straight') this.startLoop();
     const now = this.ctx.currentTime;
     if (this.nextGrain < now) this.nextGrain = now + 0.05;
     this.lastTick = now;
@@ -184,6 +227,10 @@ export class GranularVoice {
     // Grains carry on being scheduled for the whole fade. Without this the
     // cloud stops within one grain and the ramp fades nothing.
     this.releaseUntil = now + this.p.release;
+    if (this.mode === 'straight') {
+      // Let the fade finish before the source goes.
+      setTimeout(() => { if (!this.playing) this.stopLoop(); }, this.p.release * 1000 + 60);
+    }
     this.input.gain.cancelScheduledValues(now);
     this.input.gain.setValueAtTime(this.input.gain.value, now);
     this.input.gain.linearRampToValueAtTime(0, this.releaseUntil);
@@ -202,6 +249,16 @@ export class GranularVoice {
     const dt = Math.min(0.25, Math.max(0, now - this.lastTick));
     this.lastTick = now;
     if (!this.buffer) return;
+
+    if (this.mode === 'straight') {
+      if (this.loop) {
+        this.loop.playbackRate.setTargetAtTime(this.loopRate(transport), now, 0.05);
+        // Keep the read head honest for the waveform and the orbits.
+        const span = this.buffer.duration / this.loop.playbackRate.value;
+        if (span > 0) this.p.position = ((now - this.loopAt) / span) % 1;
+      }
+      return;
+    }
 
     // A synced pad takes its position straight from the clock rather than
     // integrating its own, so it can never drift out of agreement.

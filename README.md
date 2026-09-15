@@ -141,6 +141,26 @@ decaying noise — changing size, decay or darkness rebuilds it. The delay has a
 lowpass in its feedback path and a slow LFO on its delay time, so repeats
 darken and smear like tape.
 
+## Playing a sample straight
+
+Not everything wants to be granulated. **Mode** on the Pad tab switches a voice
+between *Grains* and *Straight*, and **Plain** resets the pad to unmolested
+playback in one press — no detune, no spray, no sweep, filter open, a touch of
+reverb and nothing else. That is the way back when a pad has been tortured past
+recognition, and the right starting point for a drum loop.
+
+Straight is a genuinely different path, not a granular setting. A grain tops
+out at 800ms, so no arrangement of them ever adds up to an untouched two second
+loop; in Straight the buffer plays as a plain looping source through the same
+filter and sends. The grain controls grey out, because they are not doing
+anything.
+
+With **Sync** set to a number of bars, a straight loop is repitched to fill
+those bars exactly — a two second sample locked to one bar plays at rate 1.0 at
+120bpm and 0.75 at 90. Changing tempo glides rather than jumps, and locking a
+running loop relaunches it on the next downbeat so it lands on the bar. Left
+free, it plays at its natural rate and Pitch does what it says.
+
 ## The clock
 
 There is no timeline and no grid, but there is a clock, for when the music
