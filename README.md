@@ -161,11 +161,22 @@ first nudge gives something worth hearing.
 Fully straight greys out the grain controls, since they have nothing to do;
 any texture at all and they are live again.
 
-With **Sync** set to a number of bars, the straight layer is repitched to fill
-those bars exactly — a two second sample locked to one bar plays at rate 1.0 at
-120bpm and 0.75 at 90. Changing tempo glides rather than jumps, and locking a
-running loop relaunches it on the next downbeat so it lands on the bar. Left
-free, it plays at its natural rate and Pitch does what it says.
+**One clock per pad.** Cycle is how long a single pass through the sample
+takes, and it governs both layers: the read head sweeps once per Cycle, and
+the straight layer plays at whatever speed makes one pass take exactly that
+long. Set Cycle to the sample's own length — which **Plain** does for you —
+and it plays at its natural speed. Double Cycle and it plays at half speed,
+grains and loop together. There is no point in the blend where anything hands
+over to anything else.
+
+Pitch multiplies that speed on top, so +12 plays twice as fast an octave up.
+Note that Cycle bottoms out at two seconds, so a shorter sample cannot be
+driven faster than natural from Cycle alone — use Pitch, or lock it to bars.
+
+With **Sync** set to a number of bars, bars win: the pass is fitted to them
+exactly, so a two second sample locked to one bar plays at rate 1.0 at 120bpm
+and 0.75 at 90. Changing tempo glides rather than jumps, and locking a running
+loop relaunches it on the next downbeat so it lands on the bar.
 
 Texture is an ordinary parameter, so it is captured by scenes, morphs with
 them, and can be put under a knob or a swell like anything else.

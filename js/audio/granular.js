@@ -147,14 +147,27 @@ export class GranularVoice {
     else if (t >= 0.999 && this.loop) this.stopLoop();
   }
 
-  /** Rate that makes the sample fill its synced bars exactly, else pitch. */
-  loopRate(transport) {
-    const semis = this.p.pitch;
-    if (this.syncBars > 0 && transport) {
-      const want = this.syncBars * transport.secondsPerBar;
-      if (want > 0 && this.buffer) return this.buffer.duration / want;
+  /**
+   * How long one pass through the sample takes — the same number that governs
+   * the granular read head. Bars win when the pad is locked to the clock.
+   */
+  span(transport) {
+    if (this.syncBars > 0 && transport && transport.running) {
+      return this.syncBars * transport.secondsPerBar;
     }
-    return Math.pow(2, semis / 12);
+    return this.p.cycle;
+  }
+
+  /**
+   * The straight layer plays at whatever speed makes one pass take `span`, so
+   * it travels the sample at the same rate the grains do. One clock for the
+   * pad rather than two that swap over at some threshold.
+   */
+  loopRate(transport) {
+    if (!this.buffer) return 1;
+    const want = this.span(transport);
+    const base = want > 0 ? this.buffer.duration / want : 1;
+    return Math.max(0.03, Math.min(16, base * Math.pow(2, this.p.pitch / 12)));
   }
 
   startLoop(at, transport) {
@@ -168,6 +181,8 @@ export class GranularVoice {
     src.start(when);
     this.loop = src;
     this.loopAt = when;
+    // Start the read head with it, so the marker and the sound agree.
+    this.p.position = 0;
   }
 
   stopLoop() {
@@ -265,15 +280,10 @@ export class GranularVoice {
     this.lastTick = now;
     if (!this.buffer) return;
 
+    // Both layers travel at the same rate, so the read head below is right for
+    // either of them and there is no handover anywhere in the blend.
     if (this.loop) {
       this.loop.playbackRate.setTargetAtTime(this.loopRate(transport), now, 0.05);
-      // With no grains running, the loop drives the read head so the waveform
-      // and the orbits still show where the sound is.
-      if (this.p.texture < 0.5) {
-        const span = this.buffer.duration / this.loop.playbackRate.value;
-        if (span > 0) this.p.position = ((now - this.loopAt) / span) % 1;
-        if (this.p.texture <= 0.001) return;
-      }
     }
 
     // A synced pad takes its position straight from the clock rather than
@@ -281,8 +291,9 @@ export class GranularVoice {
     if (this.syncBars > 0 && transport && transport.running && !this.frozen) {
       const pos = (transport.bars(now) / this.syncBars) * this.dir;
       this.p.position = ((pos % 1) + 1) % 1;
+      if (this.loop) this.loop.playbackRate.setTargetAtTime(this.loopRate(transport), now, 0.05);
       if (!this.sounding) return;
-      this.scheduleWindow(now, horizon);
+      if (this.p.texture > 0.001) this.scheduleWindow(now, horizon);
       return;
     }
 
@@ -297,7 +308,8 @@ export class GranularVoice {
     }
 
     if (!this.sounding) return;
-    this.scheduleWindow(now, horizon);
+    // Nothing to schedule when the sound is playing entirely straight.
+    if (this.p.texture > 0.001) this.scheduleWindow(now, horizon);
   }
 
   scheduleWindow(now, horizon) {
