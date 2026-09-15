@@ -223,14 +223,6 @@ function refreshPadPanel() {
   $('btn-revert').disabled = !pad.original;
   $('filter-type').value = engine.voices[selected].filterType;
   $('sync-bars').value = String(engine.voices[selected].syncBars || 0);
-  $('play-mode').value = engine.voices[selected].mode;
-  // In straight playback the grain controls are not doing anything, so say so
-  // rather than leaving them looking live.
-  const straight = engine.voices[selected].mode === 'straight';
-  for (const el of $('params').children) {
-    el.classList.toggle('inert',
-      straight && ['grain', 'density', 'spray', 'reverse', 'detune', 'cycle', 'position'].includes(el.dataset.k));
-  }
   $('btn-dir').style.color = engine.voices[selected].dir < 0 ? 'var(--accent)' : '';
   buildParams();
 }
@@ -380,7 +372,11 @@ function buildParams() {
     });
   }
   for (const el of host.children) paintParam(el, v);
+  lastStraight = null;          // force the greying to be re-evaluated
 }
+
+// What has nothing to do once the sound is playing straight.
+const GRAIN_ONLY = ['grain', 'density', 'spray', 'reverse', 'detune'];
 
 function paintParam(el, v) {
   const key = el.dataset.k;
@@ -405,9 +401,23 @@ function paintParam(el, v) {
  * every frame so it reads as the moving playhead it is, rather than looking
  * like it only creeps forward whenever you happen to touch a knob.
  */
+let lastStraight = null;
+
 function paintLiveParams() {
+  const v = engine.voices[selected];
   const el = $('params').querySelector('.par[data-k=position]');
-  if (el) paintParam(el, engine.voices[selected]);
+  if (el) paintParam(el, v);
+
+  // Texture can be moved by a knob, a swell or a morph as well as by hand, so
+  // the greying is checked here rather than only when the panel is rebuilt.
+  // Guarded on a change so it is not touching the DOM every frame.
+  const straight = v.p.texture <= 0.001;
+  if (straight !== lastStraight) {
+    lastStraight = straight;
+    for (const cell of $('params').children) {
+      cell.classList.toggle('inert', straight && GRAIN_ONLY.includes(cell.dataset.k));
+    }
+  }
 }
 
 function wireCols() {
@@ -1490,36 +1500,35 @@ function wireSize() {
 }
 
 // Everything neutral: the sample as recorded, a touch of space, nothing
-// moving. The starting point for a drum loop, and the way back from having
-// tortured a pad past recognition.
+// moving. Not a mode — a starting position. Raise Texture from here and the
+// grains come back in over the top of it, which is the point.
+//
+// The grain settings are left somewhere sensible rather than at zero, so the
+// first nudge of Texture gives something musical instead of a mess.
 const PLAIN = {
-  pitch: 0, detune: 0, reverse: 0, spray: 0, spread: 0.35,
+  texture: 0,
+  pitch: 0, detune: 0.1, reverse: 0, spray: 0.04, spread: 0.4,
   cutoff: 18000, sweep: 0, rate: 0.07,
   reverbSend: 0.14, delaySend: 0, level: 0.85,
   attack: 0.06, release: 0.25,
-  grain: 800, density: 2,
+  grain: 240, density: 14,
 };
 
 function makePlain() {
   const v = engine.voices[selected];
-  v.setMode('straight');
   v.setFilterType('lowpass');
   v.dir = 1;
   for (const [k, val] of Object.entries(PLAIN)) v.set(k, val);
-  // A straight pad usually wants to sit on the bar rather than drift.
+  // The read head travels the sample once at its natural speed, so raising
+  // Texture grains the part you are actually hearing.
   if (pads[selected].buffer) {
     v.set('cycle', Math.min(PARAMS.cycle.max, pads[selected].buffer.duration));
   }
-  $('play-mode').value = 'straight';
   refreshPadPanel();
   renderPadHeads();
 }
 
 function wirePlayMode() {
-  $('play-mode').addEventListener('change', (e) => {
-    engine.voices[selected].setMode(e.target.value);
-    refreshPadPanel();
-  });
   $('btn-plain').addEventListener('click', makePlain);
 }
 
@@ -1754,7 +1763,7 @@ function wireTransport() {
     voice.syncBars = v;
     // Re-launch a straight loop on the next downbeat, so locking it to the
     // bar actually puts it on the bar.
-    if (voice.mode === 'straight' && voice.playing && v > 0 && t.running) {
+    if (voice.loop && voice.playing && v > 0 && t.running) {
       voice.stopLoop();
       voice.startLoop(t.nextDownbeat(), t);
     }

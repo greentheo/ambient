@@ -22,6 +22,10 @@ export const PARAMS = {
   pitch:    { min: -24,  max: 24,    def: 0,     step: 0.1,  label: 'Pitch', unit: 'st' },
   detune:   { min: 0,    max: 12,    def: 0.15,  step: 0.01, label: 'Detune' },
   reverse:  { min: 0,    max: 1,     def: 0.25,  step: 0.01, label: 'Rev' },
+  // 0 is the sample as recorded, 1 is pure grains, and everything between is
+  // both at once. A drum loop with a little texture on top is the whole point
+  // — straight is a starting position, not a separate instrument.
+  texture:  { min: 0,    max: 1,     def: 1,     step: 0.01, label: 'Texture' },
   attack:   { min: 0.02, max: 12,    def: 1.2,   step: 0.02, label: 'Fade in', unit: 's', curve: 'log' },
   release:  { min: 0.02, max: 20,    def: 3.0,   step: 0.02, label: 'Fade out', unit: 's', curve: 'log' },
   spread:   { min: 0,    max: 1,     def: 0.8,   step: 0.01, label: 'Width' },
@@ -60,6 +64,15 @@ export class GranularVoice {
 
     this.input = ctx.createGain();
     this.input.gain.value = 0;
+
+    // The two ways of hearing the source, crossfaded by `texture`. Both feed
+    // the same filter and sends, so a blend is one sound rather than two.
+    this.loopGain = ctx.createGain();
+    this.grainGain = ctx.createGain();
+    this.loopGain.gain.value = 0;
+    this.grainGain.gain.value = 1;
+    this.loopGain.connect(this.input);
+    this.grainGain.connect(this.input);
 
     // Two poles in series — 24dB/oct. A single lowpass barely bites on
     // material this broad, which is why Tone felt like it did nothing.
@@ -106,10 +119,7 @@ export class GranularVoice {
     this.live = false;
     this.buffer = buf;
     this.reversed = reverseBuffer(this.ctx, buf);
-    if (this.mode === 'straight') {
-      this.stopLoop();
-      if (this.playing) this.startLoop();
-    }
+    if (this.loop) { this.stopLoop(); if (this.playing) this.startLoop(); }
   }
 
   /**
@@ -126,11 +136,15 @@ export class GranularVoice {
     this.notes = semitones;
   }
 
-  setMode(mode) {
-    if (mode === this.mode) return;
-    this.mode = mode;
-    this.stopLoop();
-    if (mode === 'straight' && this.playing) this.startLoop();
+  /** Equal power, so a blend does not dip in the middle. */
+  applyTexture() {
+    const t = this.p.texture;
+    const now = this.ctx.currentTime;
+    this.grainGain.gain.setTargetAtTime(Math.sin(t * Math.PI / 2), now, 0.04);
+    this.loopGain.gain.setTargetAtTime(Math.cos(t * Math.PI / 2), now, 0.04);
+    // The loop only runs when it can be heard.
+    if (t < 0.999 && this.playing && !this.loop) this.startLoop();
+    else if (t >= 0.999 && this.loop) this.stopLoop();
   }
 
   /** Rate that makes the sample fill its synced bars exactly, else pitch. */
@@ -150,7 +164,7 @@ export class GranularVoice {
     src.buffer = this.buffer;
     src.loop = true;
     src.playbackRate.value = this.loopRate(transport);
-    src.connect(this.input);
+    src.connect(this.loopGain);
     src.start(when);
     this.loop = src;
     this.loopAt = when;
@@ -195,6 +209,7 @@ export class GranularVoice {
       this.filter2.frequency.setTargetAtTime(v, now, 0.02);
     } else if (name === 'sweep') this.lfoDepth.gain.setTargetAtTime(v, now, 0.05);
     else if (name === 'rate') this.lfo.frequency.setTargetAtTime(v, now, 0.05);
+    else if (name === 'texture') this.applyTexture();
     else if (name === 'reverbSend') this.rev.gain.setTargetAtTime(v, now, 0.03);
     else if (name === 'delaySend') this.del.gain.setTargetAtTime(v, now, 0.03);
     else if (name === 'level' && this.playing) {
@@ -210,7 +225,7 @@ export class GranularVoice {
     if (this.playing || !this.buffer) return;
     this.playing = true;
     this.releaseUntil = 0;
-    if (this.mode === 'straight') this.startLoop();
+    if (this.p.texture < 0.999) this.startLoop();
     const now = this.ctx.currentTime;
     if (this.nextGrain < now) this.nextGrain = now + 0.05;
     this.lastTick = now;
@@ -227,8 +242,8 @@ export class GranularVoice {
     // Grains carry on being scheduled for the whole fade. Without this the
     // cloud stops within one grain and the ramp fades nothing.
     this.releaseUntil = now + this.p.release;
-    if (this.mode === 'straight') {
-      // Let the fade finish before the source goes.
+    // Let the fade finish before the source goes.
+    if (this.loop) {
       setTimeout(() => { if (!this.playing) this.stopLoop(); }, this.p.release * 1000 + 60);
     }
     this.input.gain.cancelScheduledValues(now);
@@ -250,14 +265,15 @@ export class GranularVoice {
     this.lastTick = now;
     if (!this.buffer) return;
 
-    if (this.mode === 'straight') {
-      if (this.loop) {
-        this.loop.playbackRate.setTargetAtTime(this.loopRate(transport), now, 0.05);
-        // Keep the read head honest for the waveform and the orbits.
+    if (this.loop) {
+      this.loop.playbackRate.setTargetAtTime(this.loopRate(transport), now, 0.05);
+      // With no grains running, the loop drives the read head so the waveform
+      // and the orbits still show where the sound is.
+      if (this.p.texture < 0.5) {
         const span = this.buffer.duration / this.loop.playbackRate.value;
         if (span > 0) this.p.position = ((now - this.loopAt) / span) % 1;
+        if (this.p.texture <= 0.001) return;
       }
-      return;
     }
 
     // A synced pad takes its position straight from the clock rather than
@@ -335,7 +351,7 @@ export class GranularVoice {
     const pan = this.ctx.createStereoPanner();
     pan.pan.value = (Math.random() * 2 - 1) * p.spread;
 
-    src.connect(g).connect(pan).connect(this.input);
+    src.connect(g).connect(pan).connect(this.grainGain);
     // The duration argument bounds the grain on its own. Do not also call
     // stop() — a stop scheduled near the natural end makes Chrome fire
     // `ended` twice, and the teardown runs twice with it.

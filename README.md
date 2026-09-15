@@ -141,25 +141,34 @@ decaying noise — changing size, decay or darkness rebuilds it. The delay has a
 lowpass in its feedback path and a slow LFO on its delay time, so repeats
 darken and smear like tape.
 
-## Playing a sample straight
+## Straight, and then tampered with
 
-Not everything wants to be granulated. **Mode** on the Pad tab switches a voice
-between *Grains* and *Straight*, and **Plain** resets the pad to unmolested
-playback in one press — no detune, no spray, no sweep, filter open, a touch of
-reverb and nothing else. That is the way back when a pad has been tortured past
-recognition, and the right starting point for a drum loop.
+Not everything wants to be granulated, and a grain tops out at 800ms — so no
+arrangement of them ever adds up to an untouched two second drum loop. The
+source is therefore heard two ways at once, crossfaded by **Texture**:
 
-Straight is a genuinely different path, not a granular setting. A grain tops
-out at 800ms, so no arrangement of them ever adds up to an untouched two second
-loop; in Straight the buffer plays as a plain looping source through the same
-filter and sends. The grain controls grey out, because they are not doing
-anything.
+- **0** — the sample as recorded, playing as a plain loop
+- **1** — pure grains, the instrument as it has been all along
+- **anything between** — both, through the same filter and sends, so a blend
+  is one sound rather than two
 
-With **Sync** set to a number of bars, a straight loop is repitched to fill
+**Plain** sets a pad to straight playback and clears the parameters that would
+colour it. It is a starting position rather than a mode: raise Texture from
+there and the grains come in over the top of the loop. The grain settings it
+leaves behind are deliberately somewhere musical rather than at zero, so the
+first nudge gives something worth hearing.
+
+Fully straight greys out the grain controls, since they have nothing to do;
+any texture at all and they are live again.
+
+With **Sync** set to a number of bars, the straight layer is repitched to fill
 those bars exactly — a two second sample locked to one bar plays at rate 1.0 at
 120bpm and 0.75 at 90. Changing tempo glides rather than jumps, and locking a
 running loop relaunches it on the next downbeat so it lands on the bar. Left
 free, it plays at its natural rate and Pitch does what it says.
+
+Texture is an ordinary parameter, so it is captured by scenes, morphs with
+them, and can be put under a knob or a swell like anything else.
 
 ## The clock
 
