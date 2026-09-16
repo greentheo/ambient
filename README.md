@@ -374,10 +374,38 @@ octaves:
   on the selected pad or every live pad at once. The base value is captured
   when the key goes down, so a swell always returns to where you actually
   were rather than to a remembered default.
-- **Keys** outside the learned pads and scene keys play notes into the cloud.
-  Grains distribute themselves across whatever is held, so a sustained chord
-  comes out as one cloud rather than as stacked voices. `a w s e d f t g y h u j k`
-  does the same from the computer keyboard.
+- **Keys** outside the learned pads and scene keys play notes into the cloud —
+  or into the oscillators, if the selected pad is a *Keys* pad. Grains
+  distribute themselves across whatever is held, so a sustained chord comes out
+  as one cloud rather than as stacked voices. `a w s e d f t g y h u j k` does
+  the same from the computer keyboard.
+
+### Which surface a note came from
+
+Notes carry their device, the same way banks do, and for the same reason: two
+controllers will happily send the same note. A Launch Control XL's track-focus
+row is notes 41-44 and 57-60, its track-control row is 73-76 and 89-92, and an
+MPK Mini's two pad banks are 36-43 and 44-51 — so the XL's fourth track button
+and the MPK's ninth pad are both note 44, and a 25-key keybed sits right on top
+of whichever of those it happens to overlap.
+
+Without device scoping the second thing learned silently eats the first. That
+is not hypothetical: it shows up in a saved map as a `null` in the middle of the
+pad row, or a macro row with three entries instead of four, and nothing on
+screen explains why that button stopped working.
+
+So a learned note now matches only when it comes from the surface it was
+learned on. **A mapping saved before this has no device recorded and still
+answers to any of them**, which keeps old maps working exactly as they did —
+but it also means a keybed playing those notes triggers them instead of
+sounding. The *Keys* panel lists which notes are claimed and says how many are
+in that loose state; re-learn those rows and they pin themselves.
+
+The MIDI panel shows the surface under each note name, with `any device` in red
+for the unpinned ones.
+
+Held notes are tracked per surface too, so one controller releasing note 60
+does not cut off another controller's note 60.
 
 ### Banks — a row of controls across all eight tracks
 
@@ -394,8 +422,7 @@ Turning one brings that track up on screen so what you are turning is what you
 are looking at; that can be switched off per bank.
 
 Banks record which device they came from, so two controllers using the same CC
-numbers do not collide. Everything else stays device-agnostic, so an existing
-mapping keeps working.
+numbers do not collide.
 
 On a Launch Control XL that gives you three knob rows on three parameters
 across all eight tracks, faders on level, and a pad row for start/stop —

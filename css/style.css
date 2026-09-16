@@ -421,6 +421,12 @@ input[type=search]:focus,input[type=password]:focus{outline:none;border-color:va
 .keysbadge{font:11px ui-monospace,monospace;color:var(--bg);background:var(--accent-2);
   border-radius:999px;padding:3px 10px;white-space:nowrap}
 
+/* Which surface a mapping came from, under the note name. */
+.km .dev{display:block;font-style:normal;font-size:9px;color:var(--faint);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.km .dev.warn{color:var(--hot)}
+.note.warn{color:var(--hot)}
+
 /* ---------- count-in ---------- */
 /* Big enough to read from wherever you are standing, and over everything —
    you are looking at your hands, not at the screen. */

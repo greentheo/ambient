@@ -33,8 +33,29 @@ export const KNOB_TARGETS = [
 // anything centred, where parking a knob at an extreme is normal.
 export const RELATIVE = new Set(['pitch']);
 
-/** A macro entry is an object; every other mapping is a bare note number. */
+/** A mapping is either a bare note number or an object carrying one. */
 export function noteOf(m) { return typeof m === 'object' && m ? m.note : m; }
+
+/**
+ * Which surface a mapping was learned from, or '' if it predates device
+ * scoping. Two controllers will happily send the same note — the Launch
+ * Control XL's track-focus buttons are notes 41-44 and 57-60, which lands
+ * squarely on an MPK Mini's pad banks — so without this the second one
+ * learned silently takes the first one's job.
+ */
+export function deviceOf(m) { return typeof m === 'object' && m ? (m.device || '') : ''; }
+
+/**
+ * Does this mapping answer to this note from this surface? An entry with no
+ * device answers to any of them, so maps saved before this still work exactly
+ * as they did; re-learn a row to pin it to one controller.
+ */
+export function hits(m, note, device) {
+  if (m == null) return false;
+  if (noteOf(m) !== note) return false;
+  const d = deviceOf(m);
+  return !d || !device || d === device;
+}
 
 const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -66,6 +87,10 @@ export class Midi {
     this.pendingLaunch = [];
     this.launchTimer = null;
     this.held = new Set();
+    // Which surfaces are holding each note. Two controllers can send the same
+    // note — a keybed's middle C and a Launch Control XL track button are both
+    // note 60 — and one of them letting go must not release the other's.
+    this.heldBy = new Map();
     // How hard each held note was struck, 0..1 — the note source plays with
     // it, the grain cloud ignores it.
     this.vel = new Map();
@@ -267,35 +292,41 @@ export class Midi {
 
     if (this.learn === 'pads' || this.learn === 'scenes'
         || this.learn === 'launch' || this.learn === 'macros' || this.learn === 'fx') {
-      if (this.pending.some((m) => noteOf(m) === note)) return;   // twice in one pass
+      // Twice in one pass, from the same surface.
+      if (this.pending.some((m) => hits(m, note, device))) return;
       // If the control already has another job, take it — refusing silently
-      // just looks like the controller is not working.
-      const stolen = this.release(this.learn, note);
+      // just looks like the controller is not working. Only a control on the
+      // *same* surface counts as a collision.
+      const stolen = this.release(this.learn, note, device);
       this.pending.push(
-        this.learn === 'macros' ? { note, param: 'density', amount: 0.45, scope: 'selected' }
-        : this.learn === 'fx' ? { note, effect: 'freeze', scope: 'selected' }
-        : note);
+        this.learn === 'macros'
+          ? { note, device, param: 'density', amount: 0.45, scope: 'selected' }
+          : this.learn === 'fx' ? { note, device, effect: 'freeze', scope: 'selected' }
+          : { note, device });
       this.learnIndex = this.pending.length;
       if (this.h.onLearn) this.h.onLearn(this.learn, this.learnIndex, this.target, stolen);
       if (this.learnIndex >= this.target) this.commitLearn(this.learn);
       return;
     }
 
-    const pad = this.padFor(note, channel);
+    const pad = this.padFor(note, channel, device);
     if (pad >= 0) { this.h.onPad(pad); return; }
 
-    const scene = this.map.scenes.indexOf(note);
+    const scene = this.map.scenes.findIndex((m) => hits(m, note, device));
     if (scene >= 0) { this.h.onScene(scene); return; }
 
-    const launch = (this.map.launch || []).findIndex((m) => m != null && m === note);
+    const launch = (this.map.launch || []).findIndex((m) => hits(m, note, device));
     if (launch >= 0) { this.queueLaunch(launch); return; }
 
-    const fx = (this.map.fx || []).findIndex((m) => noteOf(m) === note);
+    const fx = (this.map.fx || []).findIndex((m) => hits(m, note, device));
     if (fx >= 0) { this.h.onEffect(fx, true); return; }
 
-    const macro = (this.map.macros || []).findIndex((m) => noteOf(m) === note);
+    const macro = (this.map.macros || []).findIndex((m) => hits(m, note, device));
     if (macro >= 0) { this.h.onMacro(macro, true); return; }
 
+    let by = this.heldBy.get(note);
+    if (!by) { by = new Set(); this.heldBy.set(note, by); }
+    by.add(device);
     this.held.add(note);
     this.vel.set(note, velocity);
     this.h.onNotes([...this.held]);
@@ -323,11 +354,11 @@ export class Midi {
    * Take a note away from whatever else was using it.
    * @returns {string|null} the role it was taken from, for the status line
    */
-  release(kind, note) {
+  release(kind, note, device = '') {
     for (const k of ['pads', 'scenes', 'launch', 'macros', 'fx']) {
       if (k === kind) continue;
       const list = this.map[k] || [];
-      const at = list.findIndex((m) => noteOf(m) === note);
+      const at = list.findIndex((m) => hits(m, note, device));
       if (at < 0) continue;
       // Pads and launch are positional — blanking keeps the rest in place.
       if (k === 'pads' || k === 'launch') list[at] = null;
@@ -337,6 +368,13 @@ export class Midi {
     return null;
   }
 
+  /** Drop every held note, whichever surface it came from. */
+  clearHeld() {
+    this.held.clear();
+    this.heldBy.clear();
+    this.vel.clear();
+  }
+
   /** True once a device is bound AND at least one input was found. */
   get connected() { return !!this.access && this.inputs.length > 0; }
 
@@ -344,11 +382,16 @@ export class Midi {
     const hit = this.bankHit('note', note, device);
     if (hit) { this.h.onBank(hit.bank, hit.track, 0); return; }
 
-    const fx = (this.map.fx || []).findIndex((m) => noteOf(m) === note);
+    const fx = (this.map.fx || []).findIndex((m) => hits(m, note, device));
     if (fx >= 0) { this.h.onEffect(fx, false); return; }
 
-    const macro = (this.map.macros || []).findIndex((m) => noteOf(m) === note);
+    const macro = (this.map.macros || []).findIndex((m) => hits(m, note, device));
     if (macro >= 0) { this.h.onMacro(macro, false); return; }
+    const by = this.heldBy.get(note);
+    if (!by) return;
+    by.delete(device);
+    if (by.size) return;                 // another surface is still on it
+    this.heldBy.delete(note);
     if (this.held.delete(note)) { this.vel.delete(note); this.h.onNotes([...this.held]); }
   }
 
@@ -369,8 +412,8 @@ export class Midi {
   }
 
   /** Learned pads win; otherwise channel 10 is the near-universal pad channel. */
-  padFor(note, channel) {
-    const learned = this.map.pads.findIndex((m) => m != null && m === note);
+  padFor(note, channel, device = '') {
+    const learned = this.map.pads.findIndex((m) => hits(m, note, device));
     if (learned >= 0) return learned;
     if (this.map.pads.length) return -1;
     if (channel === 9 && note >= 36 && note <= 43) return note - 36;

@@ -6,7 +6,7 @@ import { InputCapture } from './audio/capture.js';
 import { WAVES } from './audio/synth.js';
 import { LiveBuffer } from './audio/livebuf.js';
 import { paulStretch } from './audio/stretch.js';
-import { Midi, KNOB_TARGETS, RELATIVE, noteOf } from './audio/midi.js';
+import { Midi, KNOB_TARGETS, RELATIVE, noteOf, deviceOf } from './audio/midi.js';
 import { Swells } from './swells.js';
 import { Effects, EFFECTS } from './effects.js';
 import { runTour, shouldRun } from './tour.js';
@@ -1096,29 +1096,62 @@ function wireInput() {
 /* ---------------- keys ---------------- */
 
 /**
- * Notes on the controller that already have a job. They keep it — a Keys pad
- * takes the *unclaimed* keys, so the scenes and effects you perform with never
- * go dead underneath you.
+ * Notes that already have a job. They keep it — a Keys pad takes the
+ * *unclaimed* keys, so the scenes and effects you perform with never go dead
+ * underneath you.
  */
 function claimedNotes() {
   if (!midi) return [];
-  const out = new Set();
+  const out = [];
   for (const kind of ['pads', 'scenes', 'launch', 'macros', 'fx']) {
     for (const m of midi.map[kind] || []) {
       const n = noteOf(m);
-      if (n != null) out.add(n);
+      if (n != null) out.push({ note: n, device: deviceOf(m) });
     }
   }
-  return [...out].sort((a, b) => a - b);
+  return out.sort((a, b) => a.note - b.note);
+}
+
+/** 36, 38, 40-51, 57-60 — a list of 26 bare numbers is unreadable. */
+function asRanges(nums) {
+  const sorted = [...new Set(nums)].sort((a, b) => a - b);
+  const out = [];
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    out.push(j > i + 1 ? `${sorted[i]}\u2013${sorted[j]}` : sorted.slice(i, j + 1).join(', '));
+    i = j + 1;
+  }
+  return out.join(', ');
 }
 
 function paintClaimed() {
+  const el = $('keys-claimed');
+  if (!el) return;
   const claimed = claimedNotes();
-  $('keys-claimed').textContent = claimed.length
-    ? `${claimed.length} note${claimed.length > 1 ? 's' : ''} on your controller `
-      + `(${claimed.join(', ')}) already drive pads, scenes or effects. They keep those jobs — `
-      + 'a Keys pad only takes the notes nothing else is using.'
-    : 'Nothing on your controller is mapped to a note yet, so the whole keyboard is free.';
+  if (!claimed.length) {
+    el.classList.remove('warn');
+    el.textContent = 'Nothing on your controller is mapped to a note yet, '
+      + 'so the whole keyboard is free.';
+    return;
+  }
+  const loose = claimed.filter((c) => !c.device);
+  const lines = [
+    `Notes ${asRanges(claimed.map((c) => c.note))} already drive pads, scenes, `
+      + 'launches, macros or effects, and keep those jobs. A Keys pad takes what is left.',
+  ];
+  if (loose.length) {
+    // The real hazard, and it is invisible otherwise: an entry learned before
+    // mappings remembered their surface answers to that note from ANY
+    // controller — so a keybed sitting on those numbers is dead.
+    lines.push(`${loose.length} of them (${asRanges(loose.map((c) => c.note))}) were learned `
+      + 'before mappings remembered which controller they came from, so they answer to any '
+      + 'surface — a keyboard playing those notes will trigger them instead of sounding. '
+      + 'Re-learn those rows and they pin themselves to one device.');
+  }
+  el.classList.toggle('warn', loose.length > 0);
+  el.textContent = lines.join(' ');
 }
 
 function wireKeys() {
@@ -1522,6 +1555,20 @@ function renderResults() {
 
 /* ---------------- midi ---------------- */
 
+/**
+ * A learned note, with the surface it came from. Two controllers can send the
+ * same note — that is the whole reason mappings carry a device — so the panel
+ * has to say which one, or an entry that looks identical to another is
+ * indistinguishable on screen.
+ */
+function noteCell(m) {
+  if (m == null) return 'unmapped';
+  const d = deviceOf(m);
+  return d
+    ? `${noteName(noteOf(m))} <em class="dev">${d}</em>`
+    : `${noteName(noteOf(m))} <em class="dev warn">any device</em>`;
+}
+
 function buildKnobMap() {
   paintClaimed();
   const padHost = $('padmap');
@@ -1531,7 +1578,7 @@ function buildKnobMap() {
     const el = document.createElement('div');
     el.className = 'km' + (note != null ? ' mapped' : '');
     el.innerHTML = `<div class="k">Pad ${i + 1}</div>
-      <div class="cc">${note != null ? noteName(note) : 'unmapped'}</div>`;
+      <div class="cc">${noteCell(note)}</div>`;
     padHost.appendChild(el);
   }
 
@@ -1553,7 +1600,7 @@ function buildKnobMap() {
     const el = document.createElement('div');
     el.className = 'km' + (note != null ? ' mapped' : '');
     el.innerHTML = `<div class="k">Scene ${name}</div>
-      <div class="cc">${note != null ? noteName(note) : 'unmapped'}</div>`;
+      <div class="cc">${noteCell(note)}</div>`;
     scenes.appendChild(el);
   });
 
@@ -1564,7 +1611,7 @@ function buildKnobMap() {
     const el = document.createElement('div');
     el.className = 'km' + (note != null ? ' mapped' : '');
     el.innerHTML = `<div class="k">Launch ${i + 1}</div>
-      <div class="cc">${note != null ? noteName(note) : 'unmapped'}</div>`;
+      <div class="cc">${noteCell(note)}</div>`;
     launchHost.appendChild(el);
   }
   buildMacroMap();
@@ -2134,7 +2181,7 @@ function stopAll() {
 
   morpher.cancel();
   qwertyHeld.clear();
-  if (midi) midi.held.clear();
+  if (midi) midi.clearHeld();
 
   engine.voices.forEach((v, i) => {
     releaseNotes(i);
