@@ -1,3 +1,8 @@
+/* `hidden` has to win. Plenty of rules here set a display on elements that
+   are sometimes hidden — `label{display:block}` alone was enough to leave a
+   hidden row on screen — and the UA's [hidden] rule loses every time. */
+[hidden]{display:none !important}
+
 /* ---------- palettes ----------
    Every colour the app and its canvases use comes from here, so a palette is
    a self-contained block and the drawing code never names a colour. */
@@ -410,6 +415,23 @@ input[type=search]:focus,input[type=password]:focus{outline:none;border-color:va
 
 .capbadge{font:11px ui-monospace,monospace;color:#2a0b08;background:var(--hot);
   border-radius:999px;padding:3px 10px;white-space:nowrap}
+
+/* The keyboard belongs to one pad at a time, and you have to be able to see
+   which one without looking away from what you are playing. */
+.keysbadge{font:11px ui-monospace,monospace;color:var(--bg);background:var(--accent-2);
+  border-radius:999px;padding:3px 10px;white-space:nowrap}
+
+/* ---------- count-in ---------- */
+/* Big enough to read from wherever you are standing, and over everything —
+   you are looking at your hands, not at the screen. */
+.countin{position:fixed;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:6px;z-index:60;
+  pointer-events:none;background:rgba(0,0,0,0.35)}
+.countin[hidden]{display:none}
+.countin b{font:700 clamp(84px,18vw,220px)/1 ui-monospace,monospace;
+  color:var(--hot);text-shadow:0 0 40px rgba(0,0,0,0.6)}
+.countin span{font:13px ui-monospace,monospace;color:var(--ink);
+  letter-spacing:0.18em;text-transform:uppercase}
 
 /* A little more room for the dials when there is screen to spare. */
 /* The dial can grow now that the numbers live beside it. */

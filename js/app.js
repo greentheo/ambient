@@ -3,6 +3,7 @@ import { PARAMS } from './audio/granular.js';
 import { SEEDS, ROOTS, generateSeed, decodeFile } from './audio/sources.js';
 import { Recorder } from './audio/recorder.js';
 import { InputCapture } from './audio/capture.js';
+import { WAVES } from './audio/synth.js';
 import { LiveBuffer } from './audio/livebuf.js';
 import { paulStretch } from './audio/stretch.js';
 import { Midi, KNOB_TARGETS, RELATIVE, noteOf } from './audio/midi.js';
@@ -144,6 +145,45 @@ function assignBuffer(i, buffer, name, source = null) {
   if (i === selected) refreshPadPanel();
 }
 
+/**
+ * Turn a pad into oscillators played from the keyboard. Everything below the
+ * source is untouched: the same filter, the same fades, the same sends. Only
+ * what feeds them changes.
+ */
+function assignKeys(i, wave, autoStart = true) {
+  const pad = pads[i];
+  if (pad.live) detachLive();
+  pad.buffer = null;
+  pad.peaks = null;
+  pad.name = `Keys · ${waveName(wave)}`;
+  pad.source = { kind: 'keys', wave };
+  pad.original = null;
+  engine.voices[i].setNoteSource(wave);
+  // Nothing sounds until the pad is faded in, and a pad that silently
+  // ignores the keys you are pressing reads as broken.
+  if (autoStart && !pad.on) togglePad(i);
+  renderPadHeads();
+  if (i === selected) { refreshPadPanel(); applyHeldNotes(); }
+}
+
+function waveName(id) {
+  const w = WAVES.find((x) => x.id === id);
+  return w ? w.name : id;
+}
+
+/** Back to an empty pad, ready for a sample again. */
+function clearKeys(i) {
+  const pad = pads[i];
+  if (!engine.voices[i].keys) return;
+  if (pad.on) togglePad(i);
+  engine.voices[i].clearNoteSource();
+  pad.name = 'empty';
+  pad.source = null;
+  pad.peaks = null;
+  renderPadHeads();
+  if (i === selected) refreshPadPanel();
+}
+
 /* ---------------- pad tiles ---------------- */
 
 function buildPads() {
@@ -180,22 +220,30 @@ function renderPadHeads() {
   pads.forEach((pad, i) => {
     pad.el.querySelector('.pad-name').textContent = pad.live ? `${pad.name} ●` : pad.name;
     const v = engine.voices[i];
-    pad.el.querySelector('.pad-cyc').textContent = v.syncBars > 0
-      ? `${v.syncBars % 1 ? v.syncBars : v.syncBars | 0} bar${v.syncBars === 1 ? '' : 's'}`
-      : `${v.p.cycle.toFixed(1)}s`;
+    // A Keys pad has no cycle to report — it has a waveform.
+    pad.el.querySelector('.pad-cyc').textContent = v.keys
+      ? (v.synth ? waveName(v.synth.wave).toLowerCase() : 'keys')
+      : v.syncBars > 0
+        ? `${v.syncBars % 1 ? v.syncBars : v.syncBars | 0} bar${v.syncBars === 1 ? '' : 's'}`
+        : `${v.p.cycle.toFixed(1)}s`;
     pad.el.classList.toggle('on', pad.on);
     pad.el.classList.toggle('sel', i === selected);
     const play = pad.el.querySelector('.pad-play');
     play.textContent = pad.on ? '❚❚' : '▶';
     play.classList.toggle('playing', pad.on);
-    play.classList.toggle('empty', !pad.buffer);
-    play.disabled = !pad.buffer;
+    play.classList.toggle('empty', !padReady(i));
+    play.disabled = !padReady(i);
   });
+}
+
+/** A pad can be played once it has a sample OR once it is a Keys pad. */
+function padReady(i) {
+  return !!pads[i].buffer || engine.voices[i].keys;
 }
 
 function togglePad(i) {
   const pad = pads[i];
-  if (!pad.buffer) { select(i); return; }
+  if (!padReady(i)) { select(i); return; }
   pad.on = !pad.on;
   if (pad.on) engine.voices[i].start(); else engine.voices[i].stop();
   renderPadHeads();
@@ -203,8 +251,9 @@ function togglePad(i) {
 
 function select(i) {
   if (i === selected) { renderPadHeads(); return; }
-  // Held notes follow the selection rather than being stranded on the old voice.
-  engine.voices[selected].setNotes([]);
+  // Held notes follow the selection rather than being stranded on the old
+  // voice — and on a Keys pad that means actually releasing the oscillators.
+  releaseNotes(selected);
   selected = i;
   applyHeldNotes();
   // Absolute knobs must be re-caught after a selection change. Relative
@@ -219,7 +268,14 @@ function select(i) {
 
 function refreshPadPanel() {
   const pad = pads[selected];
+  const v = engine.voices[selected];
   $('edit-title').textContent = `Pad ${selected + 1} — ${pad.name}`;
+  $('btn-keys-off').disabled = !v.keys;
+  $('keys-badge').hidden = !v.keys;
+  if (v.keys) {
+    $('keys-badge').textContent = `keys → pad ${selected + 1}`;
+    if (v.synth) $('keys-wave').value = v.synth.wave;
+  }
   $('btn-revert').disabled = !pad.original;
   $('filter-type').value = engine.voices[selected].filterType;
   $('sync-bars').value = String(engine.voices[selected].syncBars || 0);
@@ -378,6 +434,9 @@ function buildParams() {
 // What has nothing to do once the sound is playing straight.
 const GRAIN_ONLY = ['grain', 'density', 'spray', 'reverse', 'detune'];
 
+// What has nothing to read on a pad that is oscillators rather than a sample.
+const BUFFER_ONLY = ['position', 'cycle', 'grain', 'density', 'spray', 'reverse', 'texture'];
+
 function paintParam(el, v) {
   const key = el.dataset.k;
   const spec = PARAMS[key];
@@ -412,10 +471,13 @@ function paintLiveParams() {
   // the greying is checked here rather than only when the panel is rebuilt.
   // Guarded on a change so it is not touching the DOM every frame.
   const straight = v.p.texture <= 0.001;
-  if (straight !== lastStraight) {
-    lastStraight = straight;
+  const state = `${straight}:${v.keys}`;
+  if (state !== lastStraight) {
+    lastStraight = state;
     for (const cell of $('params').children) {
-      cell.classList.toggle('inert', straight && GRAIN_ONLY.includes(cell.dataset.k));
+      const k = cell.dataset.k;
+      const dead = v.keys ? BUFFER_ONLY.includes(k) : (straight && GRAIN_ONLY.includes(k));
+      cell.classList.toggle('inert', dead);
     }
   }
 }
@@ -456,10 +518,29 @@ function wireParam(el, key, spec) {
 
 /* ---------------- notes ---------------- */
 
+function releaseNotes(i) {
+  const v = engine.voices[i];
+  v.setNotes([]);
+  if (v.synth) v.synth.allOff();
+}
+
+/**
+ * Held notes go to whichever source the selected pad has. A Keys pad takes
+ * the keyboard over completely while it is selected — that is the point of
+ * it — and hands it straight back when you select another track. Controls
+ * you have learned as scenes, launches, effects or macros keep their jobs
+ * either way, so the surface you perform with never goes dead.
+ */
 function applyHeldNotes() {
-  const midiNotes = midi ? [...midi.held].map((n) => n - 60) : [];
-  const keys = [...qwertyHeld];
-  engine.voices[selected].setNotes([...new Set([...midiNotes, ...keys])]);
+  const v = engine.voices[selected];
+  const midiNotes = midi ? [...midi.held] : [];
+  const typed = [...qwertyHeld].map((semi) => 60 + semi);
+  const all = [...new Set([...midiNotes, ...typed])];
+  if (v.keys && v.synth) {
+    v.synth.setHeld(all, midi ? midi.vel : null);
+    return;
+  }
+  v.setNotes(all.map((n) => n - 60));
 }
 
 /* ---------------- drawing ---------------- */
@@ -476,16 +557,54 @@ function fitCanvas(c, cssHeight) {
   return { ctx, w, h };
 }
 
+// One cycle of each waveform, for the Keys tile. Phase 0..1 in, -1..1 out.
+const WAVE_FN = {
+  sine: (t) => Math.sin(t * Math.PI * 2),
+  triangle: (t) => 4 * Math.abs(t - Math.floor(t + 0.5)) - 1,
+  square: (t) => ((t - Math.floor(t)) < 0.5 ? 1 : -1),
+  sawtooth: (t) => 2 * (t - Math.floor(t + 0.5)),
+};
+
+/**
+ * A Keys pad has no buffer to draw, so it shows what it actually is: the
+ * waveform, drifting while the pad is up, swelling when notes are held.
+ */
+function drawKeysPad(ctx, w, h, pad, v) {
+  const mid = h / 2;
+  const fn = WAVE_FN[v.synth ? v.synth.wave : 'sine'] || WAVE_FN.sine;
+  const held = v.synth ? v.synth.count : 0;
+  const amp = (mid - 6) * (held ? 0.9 : 0.4);
+  const phase = pad.on ? engine.ctx.currentTime * 0.35 : 0;
+
+  ctx.strokeStyle = pad.on ? THEME.wave : THEME.waveOff;
+  ctx.globalAlpha = pad.on ? 0.9 : 0.45;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let x = 0; x <= w; x++) {
+    const y = mid - fn((x / w) * 3 + phase) * amp;
+    if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = held ? THEME.accent2 : THEME.faint;
+  ctx.font = '9px ui-monospace,monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText(held ? `${held} held` : 'play the keys', w - 5, 11);
+}
+
 function drawPad(pad) {
   const { ctx, w, h } = fitCanvas(pad.canvas);
   const v = engine.voices[pad.index];
   ctx.clearRect(0, 0, w, h);
 
+  if (v.keys) { drawKeysPad(ctx, w, h, pad, v); return; }
+
   if (!pad.peaks) {
     ctx.fillStyle = THEME.faint;
     ctx.font = '11px ui-sans-serif,sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('drop a file · forge · capture · live', w / 2, h / 2 + 4);
+    ctx.fillText('drop a file · forge · capture · live · keys', w / 2, h / 2 + 4);
     return;
   }
 
@@ -714,6 +833,7 @@ function frame() {
     if (phase.offsetParent !== null && onScreen(phase)) drawPhase(dt);
     paintLiveParams();
     paintBeats();
+    paintCountIn();
 
     $('meter-fill').style.width = `${Math.min(100, engine.level() * 100)}%`;
     $('grains').textContent = `${engine.grainCount()} grains`;
@@ -732,38 +852,148 @@ function frame() {
 /* ---------------- recording ---------------- */
 
 /**
- * Capture to the selected pad from wherever you are. Enables the input first
- * if it has not been armed yet, so one key does the whole thing.
+ * How long the next capture runs for. With the clock up it is measured in
+ * bars, because a take that is 3.8 seconds of a 4-bar phrase is no use to
+ * anyone — it either loops or it doesn't.
  */
-async function captureNow() {
-  if (!input) return;
-  if (!input.enabled) {
-    try { await input.enable(engine.reverbBus); } catch (err) {
-      $('cap-badge').hidden = false;
-      $('cap-badge').textContent = 'no mic';
-      setTimeout(() => { $('cap-badge').hidden = true; }, 2500);
-      return;
-    }
-    $('btn-mic').textContent = 'Input live';
-    $('btn-mic').disabled = true;
-    $('btn-capture').disabled = false;
-    $('btn-live').disabled = false;
+function captureSpec() {
+  const t = engine.transport;
+  if (t.running) {
+    const bars = +$('cap-bars').value || 2;
+    return {
+      bars,
+      seconds: bars * t.secondsPerBar,
+      // A 50ms fade is inaudible on a drone and fatal on a downbeat. Bar
+      // captures get just enough to stop the loop point clicking.
+      fade: 0.004,
+      label: `${bars} bar${bars > 1 ? 's' : ''}`,
+    };
   }
-  if (input.busy) return;
-  const secs = +$('cap-len').value;
+  const seconds = +$('cap-len').value;
+  return { bars: 0, seconds, fade: 0.05, label: `${seconds}s` };
+}
+
+// The armed count-in, while one is running. Read by the overlay.
+let counting = null;
+
+/** Make sure the mic is live. @returns {boolean} */
+async function armInput() {
+  if (!input) return false;
+  if (input.enabled) return true;
+  try {
+    await input.enable(engine.reverbBus);
+  } catch (err) {
+    $('cap-status').textContent = `Microphone unavailable: ${err.message}`;
+    flashBadge('no mic', 2500);
+    return false;
+  }
+  $('btn-mic').textContent = 'Input live';
+  $('btn-mic').disabled = true;
+  $('btn-capture').disabled = false;
+  $('btn-live').disabled = false;
+  return true;
+}
+
+function flashBadge(text, ms = 1800) {
   const badge = $('cap-badge');
   badge.hidden = false;
+  badge.textContent = text;
+  setTimeout(() => { badge.hidden = true; }, ms);
+}
+
+/**
+ * Record onto the selected pad. Against a running clock this counts a bar in
+ * first and starts the take on the downbeat — sample-accurately, because the
+ * worklet is armed now and told which frame to begin on rather than being
+ * poked by a timer when the moment arrives.
+ *
+ * @param {(text:string)=>void} [onStatus] progress, for whichever control
+ *        started it
+ */
+async function runCapture(onStatus = () => {}) {
+  if (!input || input.busy) return;
+  if (!(await armInput())) return;
+
+  const t = engine.transport;
+  const spec = captureSpec();
+  const target = selected;
+  const wantCount = spec.bars > 0 && $('cap-count').checked;
+  const count = wantCount ? t.countIn(1) : null;
+  counting = count ? { ...count, label: spec.label } : null;
+
+  const badge = $('cap-badge');
+  badge.hidden = false;
+  badge.textContent = count ? `count in · ${spec.label}` : `capturing ${spec.label}`;
+  onStatus(count ? `Counting in… then ${spec.label}.` : `Capturing ${spec.label}…`);
+
   try {
-    const buf = await input.capture(secs, (t) => {
-      badge.textContent = `capturing ${t.toFixed(1)} / ${secs}s`;
-    });
-    assignBuffer(selected, buf, `Capture ${secs}s`, { kind: 'capture' });
-    badge.textContent = `captured to pad ${selected + 1}`;
-    $('cap-status').textContent = `Captured ${secs}s onto pad ${selected + 1}.`;
+    const buf = await input.capture(spec.seconds, (elapsed) => {
+      const text = `capturing ${elapsed.toFixed(1)} / ${spec.seconds.toFixed(1)}s`;
+      badge.textContent = text;
+      onStatus(`Capturing… ${elapsed.toFixed(1)}s of ${spec.seconds.toFixed(1)}s`);
+    }, { startAt: count ? count.at : 0, fade: spec.fade });
+
+    assignBuffer(target, buf, `Capture ${spec.label}`,
+      { kind: 'capture', bars: spec.bars });
+    if (spec.bars > 0) {
+      lockToBars(target, spec.bars);
+      onStatus(`Captured ${spec.label} onto pad ${target + 1}, locked to the bar. `
+        + 'Press Plain if you want it straight.');
+    } else {
+      onStatus(`Captured ${spec.label} onto pad ${target + 1}.`);
+    }
+    badge.textContent = `captured to pad ${target + 1}`;
   } catch (err) {
-    badge.textContent = `capture failed`;
+    badge.textContent = 'capture failed';
+    onStatus(`Capture failed: ${err.message}`);
+  } finally {
+    counting = null;
+    t.cancelCount();
+    setTimeout(() => { badge.hidden = true; }, 1800);
   }
-  setTimeout(() => { badge.hidden = true; }, 1800);
+}
+
+/**
+ * A take recorded against the click is already the right length, so lock it
+ * there. Cycle is set to the sample's own duration as well, so the pad still
+ * plays at natural speed if the clock is later stopped.
+ */
+function lockToBars(i, bars) {
+  const v = engine.voices[i];
+  const t = engine.transport;
+  v.syncBars = bars;
+  if (v.buffer) v.set('cycle', v.buffer.duration);
+  if (v.loop && v.playing && t.running) {
+    v.stopLoop();
+    v.startLoop(t.nextDownbeat(), t);
+  }
+  if (i === selected) { $('sync-bars').value = String(bars); buildParams(); }
+  renderPadHeads();
+}
+
+/** Capture from anywhere, with whatever the panel is currently set to. */
+async function captureNow() {
+  await runCapture((text) => { $('cap-status').textContent = text; });
+}
+
+/** Seconds or bars, depending on whether there is a clock to count. */
+function refreshCaptureMode() {
+  const running = engine.transport.running;
+  $('cap-len-row').hidden = running;
+  $('cap-bars-row').hidden = !running;
+  $('cap-count').disabled = !running;
+}
+
+function paintCountIn() {
+  const el = $('countin');
+  const c = counting ? engine.transport.counting() : null;
+  if (!c) {
+    if (!el.hidden) el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  $('countin-n').textContent = String(c.beat);
+  $('countin-sub').textContent = `count in · ${counting.label}`;
 }
 
 async function toggleRecord() {
@@ -849,21 +1079,73 @@ function wireInput() {
 
   $('btn-capture').addEventListener('click', async () => {
     const btn = $('btn-capture');
-    const secs = +$('cap-len').value;
     btn.disabled = true;
     btn.classList.add('armed');
-    try {
-      const buf = await input.capture(secs, (t) => {
-        btn.textContent = `Capturing… ${t.toFixed(1)}s / ${secs}s`;
-      });
-      assignBuffer(selected, buf, `Capture ${secs}s`, { kind: 'capture' });
-      $('cap-status').textContent = `Captured ${secs}s onto pad ${selected + 1}.`;
-    } catch (err) {
-      $('cap-status').textContent = `Capture failed: ${err.message}`;
-    }
+    await runCapture((text) => {
+      $('cap-status').textContent = text;
+      btn.textContent = text.startsWith('Capturing…') ? text : 'Capture → selected pad';
+    });
     btn.textContent = 'Capture → selected pad';
     btn.classList.remove('armed');
     btn.disabled = false;
+  });
+
+  refreshCaptureMode();
+}
+
+/* ---------------- keys ---------------- */
+
+/**
+ * Notes on the controller that already have a job. They keep it — a Keys pad
+ * takes the *unclaimed* keys, so the scenes and effects you perform with never
+ * go dead underneath you.
+ */
+function claimedNotes() {
+  if (!midi) return [];
+  const out = new Set();
+  for (const kind of ['pads', 'scenes', 'launch', 'macros', 'fx']) {
+    for (const m of midi.map[kind] || []) {
+      const n = noteOf(m);
+      if (n != null) out.add(n);
+    }
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+function paintClaimed() {
+  const claimed = claimedNotes();
+  $('keys-claimed').textContent = claimed.length
+    ? `${claimed.length} note${claimed.length > 1 ? 's' : ''} on your controller `
+      + `(${claimed.join(', ')}) already drive pads, scenes or effects. They keep those jobs — `
+      + 'a Keys pad only takes the notes nothing else is using.'
+    : 'Nothing on your controller is mapped to a note yet, so the whole keyboard is free.';
+}
+
+function wireKeys() {
+  const sel = $('keys-wave');
+  WAVES.forEach((w) => sel.add(new Option(w.name, w.id)));
+  paintClaimed();
+
+  sel.addEventListener('change', () => {
+    const v = engine.voices[selected];
+    if (!v.keys) return;
+    v.synth.setWave(sel.value);
+    pads[selected].source = { kind: 'keys', wave: sel.value };
+    pads[selected].name = `Keys · ${waveName(sel.value)}`;
+    renderPadHeads();
+  });
+
+  $('btn-keys').addEventListener('click', () => {
+    assignKeys(selected, sel.value);
+    paintClaimed();
+    $('keys-status').textContent = `Pad ${selected + 1} is played from the keyboard. `
+      + 'It has the keys while it is selected; pick another track and they go back to normal.';
+  });
+
+  $('btn-keys-off').addEventListener('click', () => {
+    const i = selected;
+    clearKeys(i);
+    $('keys-status').textContent = `Pad ${i + 1} is empty again — drop a file, forge or capture onto it.`;
   });
 }
 
@@ -1165,6 +1447,9 @@ function wireScenes() {
       data.sources.forEach((s, i) => {
         if (restored[i]) {
           assignBuffer(i, restored[i], s.name, s.source);
+        } else if (s.source && s.source.kind === 'keys') {
+          // Nothing to restore but the waveform — the pad is its own source.
+          assignKeys(i, s.source.wave || 'sine', false);
         } else if (s.source && s.source.kind === 'forge') {
           assignBuffer(i, generateSeed(engine.ctx, s.source.gen, s.source), s.name, s.source);
         } else if (s.source) {
@@ -1238,6 +1523,7 @@ function renderResults() {
 /* ---------------- midi ---------------- */
 
 function buildKnobMap() {
+  paintClaimed();
   const padHost = $('padmap');
   padHost.innerHTML = '';
   for (let i = 0; i < PAD_COUNT; i++) {
@@ -1747,12 +2033,14 @@ function wireTransport() {
   $('btn-clock').addEventListener('click', () => {
     t.toggle();
     $('btn-clock').classList.toggle('on', t.running);
+    refreshCaptureMode();
   });
   $('btn-metro').addEventListener('click', () => {
     t.metronome = !t.metronome;
     $('btn-metro').classList.toggle('on', t.metronome);
     // A click with no clock running is just silence, so start it.
     if (t.metronome && !t.running) $('btn-clock').click();
+    refreshCaptureMode();
   });
   $('bpm').addEventListener('change', (e) => t.setBpm(+e.target.value));
   $('bpb').addEventListener('change', (e) => { t.setBeatsPerBar(+e.target.value); buildBeats(); });
@@ -1785,10 +2073,18 @@ function buildBeats() {
   }
 }
 
+let lastClock = null;
+
 /** Called every frame; cheap enough and keeps the beat lamps honest. */
 function paintBeats() {
   const t = engine.transport;
   const host = $('beats');
+  // Several things start the clock — the button, locking a pad to bars, the
+  // metronome. Catching it here means none of them can forget to say so.
+  if (t.running !== lastClock) {
+    lastClock = t.running;
+    refreshCaptureMode();
+  }
   if (!t.running) {
     for (const el of host.children) el.classList.remove('on');
     return;
@@ -1841,7 +2137,7 @@ function stopAll() {
   if (midi) midi.held.clear();
 
   engine.voices.forEach((v, i) => {
-    v.setNotes([]);
+    releaseNotes(i);
     if (pads[i].on) { pads[i].on = false; v.stop(); }
   });
   if (hard) engine.panic();
@@ -1977,6 +2273,7 @@ async function begin() {
   wireForge();
   wireInput();
   wireLive();
+  wireKeys();
   wireStretch();
   wireSpace();
   wireScenes();

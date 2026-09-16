@@ -62,15 +62,20 @@ export class InputCapture {
   /**
    * Record `seconds` of input into an AudioBuffer.
    * @param {(t:number)=>void} [onProgress] called with elapsed seconds
+   * @param {{startAt?:number, fade?:number}} [opts]
+   *   startAt  audio time to begin on — the worklet holds until then, so a
+   *            count-in lands the first sample exactly on the downbeat
+   *   fade     edge fade in seconds; a bar-locked take wants this tiny, or
+   *            the fade eats the downbeat transient it was recorded for
    * @returns {Promise<AudioBuffer>}
    */
-  async capture(seconds, onProgress) {
+  async capture(seconds, onProgress, opts = {}) {
     if (!this.stream) throw new Error('input not enabled');
     if (this.busy) throw new Error('already capturing');
     this.busy = true;
 
     const rate = this.ctx.sampleRate;
-    const want = Math.floor(seconds * rate);
+    const want = Math.round(seconds * rate);
     const node = new AudioWorkletNode(this.ctx, 'tap-processor', {
       numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
     });
@@ -91,7 +96,8 @@ export class InputCapture {
       };
     });
 
-    node.port.postMessage('start');
+    if (opts.startAt) node.port.postMessage({ cmd: 'start', at: opts.startAt });
+    else node.port.postMessage('start');
     await done;
     node.port.postMessage('stop');
     // Let the final flush arrive before we tear the node down.
@@ -109,8 +115,10 @@ export class InputCapture {
     }
 
     // Grains wrap around the ends of the buffer, so fade the edges or every
-    // pass through the loop point clicks.
-    const fade = Math.min(Math.floor(rate * 0.05), Math.floor(total / 4));
+    // pass through the loop point clicks. Long enough to be inaudible, short
+    // enough not to swallow whatever you played on the one.
+    const fadeSecs = opts.fade ?? 0.05;
+    const fade = Math.min(Math.floor(rate * fadeSecs), Math.floor(total / 4));
     for (let i = 0; i < fade; i++) {
       const g = i / fade;
       l[i] *= g;

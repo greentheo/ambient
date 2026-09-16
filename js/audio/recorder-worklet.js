@@ -10,9 +10,19 @@ class TapProcessor extends AudioWorkletProcessor {
     this.l = new Float32Array(BLOCK);
     this.r = new Float32Array(BLOCK);
     this.n = 0;
+    // Frame the take is allowed to begin on. A count-in arms the node now and
+    // names a moment in the future, which is the only way to start on the
+    // beat — a setTimeout on the main thread is tens of milliseconds adrift.
+    this.startFrame = 0;
     this.port.onmessage = (e) => {
-      if (e.data === 'start') { this.n = 0; this.recording = true; }
-      else if (e.data === 'stop') { this.flush(); this.recording = false; }
+      const d = e.data;
+      if (d === 'stop' || (d && d.cmd === 'stop')) { this.flush(); this.recording = false; return; }
+      if (d === 'start') { this.n = 0; this.startFrame = 0; this.recording = true; return; }
+      if (d && d.cmd === 'start') {
+        this.n = 0;
+        this.startFrame = Math.max(0, Math.round(currentFrame + (d.at - currentTime) * sampleRate));
+        this.recording = true;
+      }
     };
   }
 
@@ -37,7 +47,9 @@ class TapProcessor extends AudioWorkletProcessor {
         if (output.length > 1) output[1].set(cr);
       }
       if (this.recording) {
-        for (let i = 0; i < cl.length; i++) {
+        const base = currentFrame;
+        const from = Math.max(0, this.startFrame - base);
+        for (let i = from; i < cl.length; i++) {
           this.l[this.n] = cl[i];
           this.r[this.n] = cr[i];
           this.n++;

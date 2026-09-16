@@ -22,6 +22,10 @@ export class Transport {
     this.click.connect(out);
 
     this.nextBeat = 0;
+    // A count-in clicks whether or not the metronome is switched on, and
+    // holds the audio time that recording is waiting for.
+    this.countFrom = 0;
+    this.countUntil = 0;
     this.timer = setInterval(() => this.schedule(), TICK_MS);
   }
 
@@ -48,6 +52,7 @@ export class Transport {
 
   stop() {
     this.running = false;
+    this.cancelCount();
   }
 
   toggle() { this.running ? this.stop() : this.start(); }
@@ -72,13 +77,53 @@ export class Transport {
     return this.startedAt + Math.ceil(bars - 1e-9) * this.secondsPerBar;
   }
 
+  /**
+   * Arm a count-in of `bars` whole bars. Recording starts on the downbeat at
+   * the end of it, so the take begins on the beat rather than wherever the
+   * button happened to be pressed.
+   *
+   * The clicks sound whether or not the metronome is switched on — counting
+   * silently is not counting.
+   *
+   * @returns {{at:number, from:number, beats:number}|null} null if no clock
+   */
+  countIn(bars = 1) {
+    if (!this.running) return null;
+    const from = this.nextDownbeat(this.ctx.currentTime + 0.08);
+    const at = from + bars * this.secondsPerBar;
+    this.countFrom = from;
+    this.countUntil = at;
+    return { at, from, beats: bars * this.beatsPerBar };
+  }
+
+  cancelCount() {
+    this.countFrom = 0;
+    this.countUntil = 0;
+  }
+
+  /**
+   * Where the count-in has got to, for the display.
+   * @returns {{beat:number, total:number, left:number}|null}
+   */
+  counting(now = this.ctx.currentTime) {
+    if (!this.countUntil || now >= this.countUntil) return null;
+    if (now < this.countFrom - 0.25) return null;
+    const total = Math.round((this.countUntil - this.countFrom) / this.secondsPerBeat);
+    const done = Math.floor(Math.max(0, now - this.countFrom) / this.secondsPerBeat);
+    return { beat: Math.min(total, done + 1), total, left: this.countUntil - now };
+  }
+
   schedule() {
     if (!this.running) return;
     const now = this.ctx.currentTime;
     if (this.nextBeat < now - 0.5) this.nextBeat = now;
     while (this.nextBeat < now + LOOKAHEAD) {
       const beatIndex = Math.round((this.nextBeat - this.startedAt) / this.secondsPerBeat);
-      if (this.metronome) {
+      // Count-in beats click regardless; the last one lands on the downbeat
+      // that recording starts on, which is the one you play to.
+      const counting = this.nextBeat >= this.countFrom - 1e-4
+        && this.nextBeat < this.countUntil - 1e-4;
+      if (this.metronome || counting) {
         this.tick(this.nextBeat, beatIndex % this.beatsPerBar === 0);
       }
       this.nextBeat += this.secondsPerBeat;

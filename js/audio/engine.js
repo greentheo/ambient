@@ -97,9 +97,10 @@ export class Engine {
     this.analyser.fftSize = 2048;
     this.limiter.connect(this.analyser);
 
-    // The metronome goes straight to the limiter, so it is audible to you but
-    // sits outside the reverb and delay you are performing with.
-    this.transport = new Transport(ctx, this.limiter);
+    // The click goes straight to the output, downstream of everything: it
+    // sits outside the reverb and delay you are performing with, and — since
+    // the session recorder taps the limiter — it never lands in the take.
+    this.transport = new Transport(ctx, ctx.destination);
 
     const buses = { dry: this.dryBus, reverb: this.reverbBus, delay: this.delayBus };
     for (let i = 0; i < this.voiceCount; i++) {

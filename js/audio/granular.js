@@ -2,6 +2,7 @@
 // This is the whole instrument, really — everything else is routing.
 
 import { reverseBuffer } from './sources.js';
+import { NoteSynth } from './synth.js';
 
 // A Hann window, shared by every grain. setValueCurveAtTime copies the array,
 // so one instance is safe to reuse.
@@ -47,6 +48,10 @@ export class GranularVoice {
     // themselves across whatever is held, so one voice plays a whole chord.
     this.notes = [];
     this.live = false;     // reading a rolling live-input buffer
+    // A pad can drop the buffer entirely and be played from the keyboard
+    // instead. Same filter, same sends, same fades — only the source changes.
+    this.keys = false;
+    this.synth = null;
     this.filterType = 'lowpass';
     // 0 = free-running on its own Cycle. Anything else locks the read head to
     // that many bars of the transport, so this pad agrees with the beat while
@@ -117,6 +122,7 @@ export class GranularVoice {
 
   setBuffer(buf) {
     this.live = false;
+    this.clearNoteSource();
     this.buffer = buf;
     this.reversed = reverseBuffer(this.ctx, buf);
     if (this.loop) { this.stopLoop(); if (this.playing) this.startLoop(); }
@@ -134,6 +140,38 @@ export class GranularVoice {
 
   setNotes(semitones) {
     this.notes = semitones;
+  }
+
+  /**
+   * Swap the sample out for oscillators. The voice keeps every parameter it
+   * had; the ones that describe how to read a buffer simply have nothing to
+   * read, which is why the UI greys them out.
+   */
+  setNoteSource(wave = 'sine') {
+    this.live = false;
+    this.keys = true;
+    this.buffer = null;
+    this.reversed = null;
+    this.notes = [];
+    this.stopLoop();
+    if (!this.synth) this.synth = new NoteSynth(this.ctx, this.input);
+    this.synth.setWave(wave);
+    this.pushShape();
+  }
+
+  clearNoteSource() {
+    if (!this.keys) return;
+    this.keys = false;
+    if (this.synth) this.synth.allOff(true);
+  }
+
+  /** Hand the synth the parameters it shares with the granular layer. */
+  pushShape() {
+    if (!this.synth) return;
+    this.synth.setShape({
+      attack: this.p.attack, release: this.p.release,
+      detune: this.p.detune, spread: this.p.spread, pitch: this.p.pitch,
+    });
   }
 
   /** Equal power, so a blend does not dip in the middle. */
@@ -227,7 +265,11 @@ export class GranularVoice {
     else if (name === 'texture') this.applyTexture();
     else if (name === 'reverbSend') this.rev.gain.setTargetAtTime(v, now, 0.03);
     else if (name === 'delaySend') this.del.gain.setTargetAtTime(v, now, 0.03);
-    else if (name === 'level' && this.playing) {
+    else if (this.keys && (name === 'attack' || name === 'release'
+             || name === 'detune' || name === 'spread' || name === 'pitch')) {
+      this.pushShape();
+    }
+    if (name === 'level' && this.playing) {
       // Cancel the fade-in from start(), so a morph driving level is the
       // only thing steering the gain.
       this.input.gain.cancelScheduledValues(now);
@@ -237,7 +279,7 @@ export class GranularVoice {
   }
 
   start() {
-    if (this.playing || !this.buffer) return;
+    if (this.playing || (!this.buffer && !this.keys)) return;
     this.playing = true;
     this.releaseUntil = 0;
     if (this.p.texture < 0.999) this.startLoop();
@@ -257,6 +299,7 @@ export class GranularVoice {
     // Grains carry on being scheduled for the whole fade. Without this the
     // cloud stops within one grain and the ramp fades nothing.
     this.releaseUntil = now + this.p.release;
+    if (this.synth) this.synth.allOff();
     // Let the fade finish before the source goes.
     if (this.loop) {
       setTimeout(() => { if (!this.playing) this.stopLoop(); }, this.p.release * 1000 + 60);

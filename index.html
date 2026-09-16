@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="theme-color" content="#0b0e13">
 <title>Ambient — a granular instrument</title>
-<link rel="stylesheet" href="css/style.css?v=20260914b">
+<link rel="stylesheet" href="css/style.css?v=20260916b">
 </head>
 <body>
 
@@ -27,6 +27,7 @@
     </button>
     <span id="rec-time" class="time">0:00</span>
     <span id="cap-badge" class="capbadge" hidden></span>
+    <span id="keys-badge" class="keysbadge" hidden></span>
     <button id="btn-stop" class="stop" title="Fade everything out (Esc). Press again to cut the tails too.">Stop all</button>
   </div>
 
@@ -195,8 +196,17 @@
         <button class="go" id="btn-mic">Enable input</button>
         <div class="in-meter"><i id="in-fill"></i></div>
         <label class="check"><input type="checkbox" id="cap-monitor"> Monitor through reverb <em>(headphones)</em></label>
-        <label>Capture length <span id="cap-len-v" class="v">8s</span>
+        <label id="cap-len-row">Capture length <span id="cap-len-v" class="v">8s</span>
           <input id="cap-len" type="range" min="2" max="30" step="1" value="8"></label>
+        <label id="cap-bars-row" class="cols" hidden>Capture length
+          <select id="cap-bars">
+            <option value="1">1 bar</option>
+            <option value="2" selected>2 bars</option>
+            <option value="4">4 bars</option>
+            <option value="8">8 bars</option>
+            <option value="16">16 bars</option>
+          </select></label>
+        <label class="check"><input type="checkbox" id="cap-count" checked> Count in one bar <em>(clock only)</em></label>
         <button class="go" id="btn-capture" disabled>Capture &rarr; selected pad</button>
         <p class="note" id="cap-status">Enable input to record a mic or an instrument.</p>
       </div>
@@ -211,6 +221,18 @@
         <button class="go" id="btn-freeze" disabled>Freeze</button>
         <button class="go" id="btn-keep" disabled>Keep window as a sample</button>
         <p class="note" id="live-status">Needs input enabled.</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Keys</h2><span class="note">play a pad, no sample</span></div>
+      <div class="stack">
+        <label class="cols">Waveform<select id="keys-wave"></select></label>
+        <button class="go" id="btn-keys">Keys &rarr; selected pad</button>
+        <button class="go" id="btn-keys-off" disabled>Clear the pad</button>
+        <p class="note" id="keys-status">Oscillators instead of a sample. Tone, Sweep, Width,
+          Pitch, Detune, the fades and both sends shape it exactly as they shape a recording.</p>
+        <p class="note" id="keys-claimed"></p>
       </div>
     </div>
 
@@ -329,6 +351,8 @@
   </div>
 </div>
 
+<div id="countin" class="countin" hidden><b id="countin-n">1</b><span id="countin-sub">count in</span></div>
+
 <div id="help" class="help hidden">
   <div class="help-card">
     <h2>Playing it</h2>
@@ -347,8 +371,11 @@
       <tr><td>Drop a file</td><td>Load it onto that pad</td></tr>
       <tr><td>Drag a number</td><td>Adjust it (vertical)</td></tr>
       <tr><td>MIDI pad</td><td>Selects its track; hit it again to switch it</td></tr>
-      <tr><td><kbd>a</kbd> <kbd>w</kbd> <kbd>s</kbd> <kbd>e</kbd> <kbd>d</kbd>&hellip;</td><td>Play notes into the selected pad's cloud</td></tr>
+      <tr><td><kbd>a</kbd> <kbd>w</kbd> <kbd>s</kbd> <kbd>e</kbd> <kbd>d</kbd>&hellip;</td><td>Play notes into the selected pad's cloud &mdash; or its oscillators, on a <b>Keys</b> pad</td></tr>
     </table>
+    <p class="tip">Start the <b>Clock</b> and a capture is measured in <b>bars</b>, not
+    seconds, with a bar of count-in first. The take starts on the downbeat and comes back
+    locked to the beat, so a loop you play in is a loop that fits.</p>
     <p class="tip">For the classic drifting-loops effect, give each pad an
     unrelated <b>Cycle</b> — 7.3, 11.1, 4.7, 13.9. There is no shared clock,
     so they will not realign for hours.</p>

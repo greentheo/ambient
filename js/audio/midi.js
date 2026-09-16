@@ -66,6 +66,9 @@ export class Midi {
     this.pendingLaunch = [];
     this.launchTimer = null;
     this.held = new Set();
+    // How hard each held note was struck, 0..1 — the note source plays with
+    // it, the grain cloud ignores it.
+    this.vel = new Map();
     // Absolute knobs jump when you change pads, so a knob stays inert until
     // it crosses the value it is about to take over.
     this.takeover = new Map();
@@ -222,7 +225,7 @@ export class Midi {
     if (this.h.onActivity) this.h.onActivity(this.lastMessage, this.messageCount, device);
 
     if (status === 0xb0) return this.onCC(a, b, device);
-    if (status === 0x90 && b > 0) return this.onNoteOn(a, channel, device);
+    if (status === 0x90 && b > 0) return this.onNoteOn(a, channel, device, b / 127);
     if (status === 0x80 || (status === 0x90 && b === 0)) return this.onNoteOff(a, device);
   }
 
@@ -256,7 +259,7 @@ export class Midi {
     this.h.onKnob(slot, value / 127);
   }
 
-  onNoteOn(note, channel, device = '') {
+  onNoteOn(note, channel, device = '', velocity = 0.8) {
     if (this.learn === 'bank') return this.learnBank('note', note, device);
 
     const hit = this.bankHit('note', note, device);
@@ -294,6 +297,7 @@ export class Midi {
     if (macro >= 0) { this.h.onMacro(macro, true); return; }
 
     this.held.add(note);
+    this.vel.set(note, velocity);
     this.h.onNotes([...this.held]);
   }
 
@@ -345,7 +349,7 @@ export class Midi {
 
     const macro = (this.map.macros || []).findIndex((m) => noteOf(m) === note);
     if (macro >= 0) { this.h.onMacro(macro, false); return; }
-    if (this.held.delete(note)) this.h.onNotes([...this.held]);
+    if (this.held.delete(note)) { this.vel.delete(note); this.h.onNotes([...this.held]); }
   }
 
   /**

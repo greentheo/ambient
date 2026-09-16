@@ -94,7 +94,8 @@ starting point there.
 
 ## Where sound comes from
 
-Five ways, all landing in the same place — an `AudioBuffer` on a pad:
+Five ways of getting an `AudioBuffer` onto a pad, and one way of doing
+without one:
 
 - **Drop a file.** Anything the browser can decode: WAV, MP3, FLAC, m4a.
 - **Forge.** Generates raw material in-app — a partial stack (*Drone*),
@@ -115,6 +116,30 @@ Five ways, all landing in the same place — an `AudioBuffer` on a pad:
   downloads are behind OAuth, and for material about to be shattered into
   grains the preview is not the weak link. **Credit the source when you
   release** — the status line shows the uploader and the sound's page.
+- **Keys.** No buffer at all: the pad becomes oscillators, played from the
+  computer keyboard or a MIDI keyboard. See below.
+
+### Keys — a pad you play
+
+*Sources → Keys* swaps a pad's sample for oscillators — sine, triangle, square
+or saw. Only the source changes. Everything downstream is the pad's, exactly as
+it is for a recording: **Tone** and **Sweep** filter it, **Width** places it,
+**Pitch** and **Detune** tune and thicken it (two oscillators per note, spread
+by Detune), **Verb** and **Delay** send it, and **Fade in** / **Fade out**
+double as the per-note envelope — 0.02s is a pluck, four seconds is a swell,
+with no extra knobs to learn.
+
+The parameters that describe how to *read a buffer* — Pos, Cycle, Grain, Dens,
+Spray, Rev, Texture — grey out, because there is no buffer to read.
+
+**A Keys pad owns the keyboard while it is selected**, and hands it straight
+back when you select another track. A purple `keys → pad n` badge in the header
+says which pad has it. Notes you have already learned as pads, scenes, launches,
+macros or effects **keep those jobs** — the Keys panel lists exactly which note
+numbers are spoken for, so the surface you perform with never goes dead
+underneath you. A Keys pad takes the keys nothing else is using.
+
+Twelve notes at once, oldest stolen after that. Velocity sets the level.
 
 ## How it makes sound
 
@@ -198,8 +223,33 @@ A locked pad shows its bar count instead of seconds, and its Cycle cell turns
 green and reads what the tempo actually works out to. Changing tempo keeps the
 current bar position, so nothing lurches mid-phrase. Sync travels with scenes.
 
-The metronome is routed past the reverb and delay, so it is audible to you
-without being part of what you are performing.
+The metronome is routed past the reverb *and past the session recorder*, so it
+is audible to you while you play and is not in the file afterwards.
+
+### Capturing to the beat
+
+With the clock running, **Capture length** is measured in **bars**, not
+seconds, and a bar of count-in runs first — four clicks, a large counter over
+the screen, and the take starting on the downbeat. The clicks sound whether or
+not the metronome is switched on; counting silently is not counting.
+
+The start is sample-accurate. The recording worklet is armed the moment you
+press the button and told which *frame* to begin on, so nothing depends on a
+main-thread timer firing at the right millisecond — measured error against a
+scheduled start is 0 samples.
+
+Two things follow from that, and they are the point of the feature:
+
+- The take is exactly N bars long, so it loops.
+- It comes back **locked to the bar** — Sync set to the bar count it was
+  recorded at, and Cycle set to its own duration so it still plays at natural
+  speed if the clock is later stopped.
+
+The edge fade is 4ms on a bar capture rather than the usual 50ms. Fifty
+milliseconds is inaudible on a drone and fatal on a downbeat.
+
+With the clock stopped, none of this applies: capture is in seconds, starts
+immediately, and lands free-running, exactly as before.
 
 ## Fades
 
