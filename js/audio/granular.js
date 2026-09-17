@@ -52,6 +52,11 @@ export class GranularVoice {
     // instead. Same filter, same sends, same fades — only the source changes.
     this.keys = false;
     this.synth = null;
+    // A recorded phrase, stored as fractions of one pass rather than seconds,
+    // so it lives on the pad's own clock exactly like the read head does.
+    this.seq = null;
+    this.seqPhase = 0;        // unwrapped position; p.position is this, wrapped
+    this.seqAt = 0;           // phase we have scheduled up to
     this.filterType = 'lowpass';
     // 0 = free-running on its own Cycle. Anything else locks the read head to
     // that many bars of the transport, so this pad agrees with the beat while
@@ -162,7 +167,55 @@ export class GranularVoice {
   clearNoteSource() {
     if (!this.keys) return;
     this.keys = false;
+    this.seq = null;
     if (this.synth) this.synth.allOff(true);
+  }
+
+  /** @param {Array} events phase-based note events @param {number} bars */
+  setSequence(events, bars = 0) {
+    this.seq = events && events.length ? { events, bars } : null;
+    this.seqAt = this.seqPhase;
+  }
+
+  clearSequence() {
+    this.seq = null;
+    if (this.synth) this.synth.allOff();
+  }
+
+  get sequenceLength() { return this.seq ? this.seq.events.length : 0; }
+
+  /**
+   * Schedule the sequence's notes across the same horizon the grains use.
+   * Events are placed by phase, so whatever Cycle or the bar lock says the
+   * pass takes, the phrase takes too — a loop recorded over two bars and then
+   * set free at 31 seconds is simply a slower version of itself.
+   */
+  tickSeq(now, horizon, span) {
+    if (!this.seq || !this.playing || !this.synth) return;
+    if (this.synth.rec) return;               // recording; don't play over it
+    // Freeze stops the read head, and the phrase rides the read head — so it
+    // has to stop scheduling too, or the lookahead runs on without it.
+    if (this.frozen) { this.seqAt = this.seqPhase; return; }
+    const rate = 1 / Math.max(0.05, span);
+    const a = this.seqAt;
+    const b = this.seqPhase + this.dir * (horizon - now) * rate;
+    // A clock restart or a big Cycle move can jump the phase a long way.
+    // Re-anchor rather than grinding through thousands of empty loops.
+    if (!Number.isFinite(b) || Math.abs(b - a) > 2) { this.seqAt = b; return; }
+
+    const lo = Math.min(a, b), hi = Math.max(a, b);
+    let budget = 32;
+    for (let k = Math.floor(lo); k <= Math.floor(hi) && budget > 0; k++) {
+      for (const e of this.seq.events) {
+        const phase = k + e.at;
+        if (phase <= lo || phase > hi) continue;
+        const when = Math.max(now, now + (phase - this.seqPhase) / (this.dir * rate));
+        this.synth.noteOn(e.note, e.vel, when, 'seq');
+        this.synth.noteOff(e.note, false, when + e.dur * span, 'seq');
+        if (--budget <= 0) break;
+      }
+    }
+    this.seqAt = b;
   }
 
   /** Hand the synth the parameters it shares with the granular layer. */
@@ -282,6 +335,9 @@ export class GranularVoice {
     if (this.playing || (!this.buffer && !this.keys)) return;
     this.playing = true;
     this.releaseUntil = 0;
+    // Pick the phrase up from where the head actually is, rather than
+    // backfilling everything that went by while the pad was down.
+    this.seqAt = this.seqPhase;
     if (this.p.texture < 0.999) this.startLoop();
     const now = this.ctx.currentTime;
     if (this.nextGrain < now) this.nextGrain = now + 0.05;
@@ -321,11 +377,11 @@ export class GranularVoice {
   tick(now, horizon, transport) {
     const dt = Math.min(0.25, Math.max(0, now - this.lastTick));
     this.lastTick = now;
-    if (!this.buffer) return;
+    if (!this.buffer && !this.keys) return;
 
     // Both layers travel at the same rate, so the read head below is right for
     // either of them and there is no handover anywhere in the blend.
-    if (this.loop) {
+    if (this.loop && !this.keys) {
       this.loop.playbackRate.setTargetAtTime(this.loopRate(transport), now, 0.05);
     }
 
@@ -334,8 +390,10 @@ export class GranularVoice {
     if (this.syncBars > 0 && transport && transport.running && !this.frozen) {
       const pos = (transport.bars(now) / this.syncBars) * this.dir;
       this.p.position = ((pos % 1) + 1) % 1;
+      this.seqPhase = pos;
       if (this.loop) this.loop.playbackRate.setTargetAtTime(this.loopRate(transport), now, 0.05);
-      if (!this.sounding) return;
+      this.tickSeq(now, horizon, this.span(transport));
+      if (!this.sounding || this.keys) return;
       if (this.p.texture > 0.001) this.scheduleWindow(now, horizon);
       return;
     }
@@ -348,9 +406,11 @@ export class GranularVoice {
       let pos = this.p.position + (this.dir * dt) / this.p.cycle;
       pos = pos - Math.floor(pos);
       this.p.position = pos;
+      this.seqPhase += (this.dir * dt) / this.p.cycle;
     }
 
-    if (!this.sounding) return;
+    this.tickSeq(now, horizon, this.span(transport));
+    if (!this.sounding || this.keys) return;
     // Nothing to schedule when the sound is playing entirely straight.
     if (this.p.texture > 0.001) this.scheduleWindow(now, horizon);
   }

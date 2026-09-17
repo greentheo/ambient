@@ -139,7 +139,44 @@ macros or effects **keep those jobs** — the Keys panel lists exactly which not
 numbers are spoken for, so the surface you perform with never goes dead
 underneath you. A Keys pad takes the keys nothing else is using.
 
-Twelve notes at once, oldest stolen after that. Velocity sets the level.
+Sixteen notes at once, oldest stolen after that. Velocity sets the level.
+
+### Recording a phrase
+
+**Capture** on a Keys pad records what you play instead of what the microphone
+hears — same button, same bar length, same count-in. Play over the take and it
+loops back at you.
+
+Events are stored as **fractions of one pass**, not as seconds. That is the
+whole trick: the phrase rides the pad's clock exactly like a read head does.
+Locked to two bars it stays on the beat with everything else that is locked;
+set the pad free at 31 seconds and the same phrase plays out over 31 seconds,
+drifting against the others like any other pad. Change Cycle and it stretches
+under your hand.
+
+Live keys play *over* a loop rather than cutting into it — the two sources are
+kept apart inside the synth, so you can add to a phrase while it runs.
+
+**Freeze** stops the phrase where a read head would stop. **Reverse** plays it
+backwards. **Pitch dive** / **lift**, **Muffle** and **Reverb throw** all work
+on it, because they act below the source.
+
+### Bouncing a phrase to a sample
+
+Grain, Density, Spray, Rev and Texture stay grey on a Keys pad, and no amount
+of wiring changes that: they describe how to read a buffer, and there is no
+buffer. **Bounce sequence → sample** makes one.
+
+It renders the phrase through an `OfflineAudioContext` and drops the result on
+the pad as an ordinary sample, so everything a sample gets is suddenly
+available to it — grains, Texture, Spray, Stretch, the lot. The filter and the
+sends are deliberately *not* baked in; those stay live on the pad, so bouncing
+costs you nothing you were already doing. Pitch is left out for the same
+reason.
+
+The release tail is wrapped back onto the head rather than extending the
+buffer, so the result is exactly one pass long and loops without a seam. A
+bounce of a bar-locked phrase comes back locked to the same bar count.
 
 ## How it makes sound
 
