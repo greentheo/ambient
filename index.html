@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="theme-color" content="#0b0e13">
 <title>Ambient — a granular instrument</title>
-<link rel="stylesheet" href="css/style.css?v=20260916c">
+<link rel="stylesheet" href="css/style.css?v=20260916e">
 </head>
 <body>
 
@@ -25,6 +25,7 @@
     <button id="btn-rec" class="rec" title="Record the master output (Space)">
       <span class="dot"></span><span id="rec-label">Record</span>
     </button>
+    <button id="btn-rec-bar" class="mini" title="With the clock running, start recording on the next downbeat instead of instantly">Bar</button>
     <span id="rec-time" class="time">0:00</span>
     <span id="cap-badge" class="capbadge" hidden></span>
     <span id="keys-badge" class="keysbadge" hidden></span>
@@ -288,6 +289,10 @@
           <button class="go" id="btn-learn-macros" disabled>Learn 4 swell keys</button>
           <button class="go" id="btn-learn-fx" disabled>Learn 4 effect pads</button>
         </div>
+        <div class="row">
+          <button class="go" id="btn-learn-transport" disabled>Learn 4 transport keys</button>
+        </div>
+        <div class="mapgroup"><h4>Transport &mdash; record, capture, clock, stop</h4><div class="knobmap" id="transportmap"></div></div>
         <div class="mapgroup"><h4>Effect pads</h4><div id="fxmap"></div></div>
         <div class="row">
           <button class="go" id="btn-learn-bank" disabled>Learn a bank of 8 &rarr; tracks 1-8</button>
@@ -319,7 +324,9 @@
         <p class="note">Launch keys start pads — play several together and they
         all come in as one gesture; play the same chord again and they all go
         out. Swell keys lean on a parameter while held and let it sink back on
-        release. A pad selects its track; hit the one already selected to
+        release. Transport keys fire on the way down: <b>Record</b>, <b>Capture</b>,
+        <b>Clock</b> and <b>Stop all</b>, so a set can be started and captured without
+        reaching for the laptop. A pad selects its track; hit the one already selected to
         switch it on or off. Scene keys morph to A&ndash;D over the Scenes morph
         time. Any other key plays notes into the selected pad&rsquo;s cloud — hold
         a chord and the grains spread across it. Knobs follow whichever pad you

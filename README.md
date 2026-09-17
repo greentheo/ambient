@@ -380,6 +380,22 @@ octaves:
   as one cloud rather than as stacked voices. `a w s e d f t g y h u j k` does
   the same from the computer keyboard.
 
+### Transport keys
+
+Four keys that run the machine rather than the music: **Record**, **Capture**,
+**Clock** and **Stop all**. They fire on the way down and have nothing to
+release. With these mapped, a set can be started, captured, counted in and
+stopped without reaching for the laptop.
+
+### If a pad will not learn
+
+If the learn counter sits at `0 of 4` while the monitor line scrolls, the
+control is sending something that is not a note. An MPK Mini's pads have
+**Note**, **CC** and **Prog Change** modes, and in the last two a note learn
+cannot see them — the monitor reads `program change 15` rather than a note.
+The learn status now says so explicitly instead of silently counting nothing.
+Put the pads back on Note and hit them again.
+
 ### Which surface a note came from
 
 Notes carry their device, the same way banks do, and for the same reason: two
@@ -504,6 +520,17 @@ stop, which downloads as `ambient-YYYYMMDD-HHMM.wav`.
 Audio is held in memory until you stop, at roughly **10 MB per minute**. Long
 sessions are fine, but a 40-minute take will be using around 400 MB before it
 encodes.
+
+**Bar**, next to the Record button, decides when a take begins. Off — the
+default — recording starts the instant you press it, which is what most of what
+this instrument does calls for. On, with the clock running, it arms instead:
+the worklet is told which frame to start filling, the overlay counts the beats
+down, and the first sample lands exactly on the downbeat. Measured offset from
+the bar line is 0 samples. Pressing Record again before the downbeat cancels
+the arm without writing a file.
+
+The metronome is downstream of the tap, so a click you record to is never in
+the file.
 
 ## Look
 

@@ -66,6 +66,16 @@ const PARAM_ORDER = [
 // Tracker-style note row, so polyphony works without plugging anything in.
 const QWERTY = { a:0, w:1, s:2, e:3, d:4, f:5, t:6, g:7, y:8, h:9, u:10, j:11, k:12 };
 
+// Four keys that run the machine rather than the music, so a set can be
+// started, captured and stopped without reaching for the laptop. They fire on
+// the way down and have nothing to release.
+const TRANSPORT_KEYS = [
+  { label: 'Record',   run: () => toggleRecord() },
+  { label: 'Capture',  run: () => captureNow() },
+  { label: 'Clock',    run: () => document.getElementById('btn-clock').click() },
+  { label: 'Stop all', run: () => stopAll() },
+];
+
 const engine = new Engine(PAD_COUNT);
 let recorder = null;
 let input = null;
@@ -842,6 +852,9 @@ function frame() {
     if (recorder && recorder.recording) {
       const t = recorder.elapsed();
       $('rec-time').textContent = `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+      const label = recorder.armed ? 'Armed' : 'Stop';
+      if ($('rec-label').textContent !== label) $('rec-label').textContent = label;
+      if (!recorder.armed && counting && counting.label === 'record') counting = null;
     }
   } catch (err) {
     console.error('frame', err);
@@ -984,26 +997,51 @@ function refreshCaptureMode() {
   $('cap-count').disabled = !running;
 }
 
+/**
+ * One overlay, two jobs: a capture's count-in counts up the way a drummer
+ * does, and an armed recording counts down to the downbeat it is waiting for.
+ */
 function paintCountIn() {
   const el = $('countin');
-  const c = counting ? engine.transport.counting() : null;
-  if (!c) {
-    if (!el.hidden) el.hidden = true;
+  if (!counting) { if (!el.hidden) el.hidden = true; return; }
+  const now = engine.ctx.currentTime;
+  const spb = engine.transport.secondsPerBeat;
+
+  if (counting.down) {
+    const left = Math.ceil((counting.at - now) / spb);
+    if (left <= 0) { if (!el.hidden) el.hidden = true; return; }
+    el.hidden = false;
+    $('countin-n').textContent = String(left);
+    $('countin-sub').textContent = 'recording on the bar';
     return;
   }
+
+  const c = engine.transport.counting();
+  if (!c) { if (!el.hidden) el.hidden = true; return; }
   el.hidden = false;
   $('countin-n').textContent = String(c.beat);
   $('countin-sub').textContent = `count in · ${counting.label}`;
 }
 
+// Whether Record waits for the next downbeat. Freeform is the default —
+// most of what this instrument does has no downbeat to wait for.
+let recOnBar = false;
+
 async function toggleRecord() {
   if (!recorder) return;
   const btn = $('btn-rec');
   if (!recorder.recording) {
-    recorder.start();
+    const t = engine.transport;
+    const onBar = recOnBar && t.running;
+    const at = onBar ? t.nextDownbeat(engine.ctx.currentTime + 0.05) : 0;
+    recorder.start(at);
+    // The overlay counts the wait down; pressing Record again cancels it,
+    // because a cancelled arm stops with under half a second and is dropped.
+    counting = at ? { at, from: engine.ctx.currentTime, label: 'record', down: true } : null;
     btn.classList.add('on');
-    $('rec-label').textContent = 'Stop';
+    $('rec-label').textContent = at ? 'Armed' : 'Stop';
   } else {
+    counting = null;
     btn.classList.remove('on');
     $('rec-label').textContent = 'Encoding…';
     const { blob, seconds } = await recorder.stop();
@@ -1614,6 +1652,16 @@ function buildKnobMap() {
       <div class="cc">${noteCell(note)}</div>`;
     launchHost.appendChild(el);
   }
+  const trHost = $('transportmap');
+  trHost.innerHTML = '';
+  TRANSPORT_KEYS.forEach((t, i) => {
+    const note = (midi.map.transport || [])[i];
+    const el = document.createElement('div');
+    el.className = 'km' + (note != null ? ' mapped' : '');
+    el.innerHTML = `<div class="k">${t.label}</div><div class="cc">${noteCell(note)}</div>`;
+    trHost.appendChild(el);
+  });
+
   buildMacroMap();
   buildFxMap();
   buildBankMap();
@@ -1973,13 +2021,25 @@ function wireMidi() {
       clearTimeout(monTimer);
       monTimer = setTimeout(() => el.classList.remove('live'), 400);
     },
+    onTransport: (i) => TRANSPORT_KEYS[i] && TRANSPORT_KEYS[i].run(),
+    // A pad in Program Change or CC mode never reaches a note learn, and
+    // "0 of 4" while the monitor line scrolls looks like a fault in here.
+    onWrongMode: (what, device) => {
+      $('learn-status').textContent =
+        `${device || 'That control'} is sending ${what}, not a note, so a note learn `
+        + 'cannot see it. On an MPK Mini the pads have Note / CC / Prog Change modes — '
+        + 'put them back on Note and hit the pad again.';
+      $('learn-status').classList.add('warn');
+    },
     onLearn: (kind, n, total, stolen) => {
+      $('learn-status').classList.remove('warn');
       $('learn-status').textContent = (stolen ? `Taken from ${stolen}. ` : '') + (kind
         ? `Learning ${kind}: ${n} of ${total} — ${kind === 'knobs' || kind === 'bank' ? 'move' : 'hit'} the next one, in track order. `
           + 'Press the button again to cancel; your saved mapping is kept until a full set is captured.'
         : 'Mapped and saved.');
       for (const bid of ['btn-learn-pads', 'btn-learn-knobs', 'btn-learn-scenes',
-        'btn-learn-launch', 'btn-learn-macros', 'btn-learn-fx', 'btn-learn-bank']) {
+        'btn-learn-launch', 'btn-learn-macros', 'btn-learn-fx', 'btn-learn-bank',
+        'btn-learn-transport']) {
         if (!kind) $(bid).classList.remove('armed');
       }
       buildKnobMap();
@@ -2000,6 +2060,7 @@ function wireMidi() {
     $('btn-learn-macros').disabled = !live;
     $('btn-learn-bank').disabled = !live;
     $('btn-learn-fx').disabled = !live;
+    $('btn-learn-transport').disabled = !live;
     $('midi-status').textContent = live ? `${count} input${count > 1 ? 's' : ''} — ${name}` : 'no inputs found';
     buildKnobMap();
   };
@@ -2044,7 +2105,8 @@ function wireMidi() {
     if (midi.learn === kind) midi.cancelLearn(); else midi.startLearn(kind);
     for (const [bid, k] of [['btn-learn-pads', 'pads'], ['btn-learn-knobs', 'knobs'],
       ['btn-learn-scenes', 'scenes'], ['btn-learn-launch', 'launch'],
-      ['btn-learn-macros', 'macros'], ['btn-learn-fx', 'fx'], ['btn-learn-bank', 'bank']]) {
+      ['btn-learn-macros', 'macros'], ['btn-learn-fx', 'fx'], ['btn-learn-bank', 'bank'],
+      ['btn-learn-transport', 'transport']]) {
       $(bid).classList.toggle('armed', midi.learn === k);
     }
   });
@@ -2055,6 +2117,7 @@ function wireMidi() {
   learnBtn('btn-learn-macros', 'macros');
   learnBtn('btn-learn-fx', 'fx');
   learnBtn('btn-learn-bank', 'bank');
+  learnBtn('btn-learn-transport', 'transport');
 
   // Learning all eight saves on its own, but a partial mapping is worth
   // keeping too — and it should be obvious that it was kept.
@@ -2219,6 +2282,13 @@ function wireTabs() {
 
 function wireGlobal() {
   $('btn-rec').addEventListener('click', toggleRecord);
+  $('btn-rec-bar').addEventListener('click', () => {
+    recOnBar = !recOnBar;
+    $('btn-rec-bar').classList.toggle('on', recOnBar);
+    $('btn-rec-bar').title = recOnBar
+      ? 'Recording starts on the next downbeat. Needs the clock running.'
+      : 'Recording starts the moment you press it.';
+  });
   $('btn-stop').addEventListener('click', stopAll);
   $('btn-viz').addEventListener('click', () => {
     window.open('viz.html', 'ambient-viz', 'width=1280,height=720');
@@ -2365,3 +2435,4 @@ async function begin() {
 
 $('btn-begin').addEventListener('click', begin, { once: true });
 wireGlobal();
+

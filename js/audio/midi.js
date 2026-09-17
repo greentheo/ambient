@@ -65,6 +65,8 @@ function describe(status, channel, a, b) {
   if (status === 0xb0) return `CC ${a} = ${b}  (${ch})`;
   if (status === 0x90 && b > 0) return `note on ${NOTES[a % 12]}${Math.floor(a / 12) - 1} (${a}) vel ${b}  (${ch})`;
   if (status === 0x80 || status === 0x90) return `note off ${NOTES[a % 12]}${Math.floor(a / 12) - 1} (${a})  (${ch})`;
+  if (status === 0xc0) return `program change ${a}  (${ch})`;
+  if (status === 0xd0) return `aftertouch ${a}  (${ch})`;
   if (status === 0xe0) return `pitch bend  (${ch})`;
   return `status 0x${status.toString(16)} ${a} ${b}  (${ch})`;
 }
@@ -80,7 +82,8 @@ export class Midi {
     this.lastMessage = null;    // for the monitor line
     this.messageCount = 0;
     // pads/scenes hold note numbers, knobs hold CC numbers
-    this.map = { pads: [], knobs: [], scenes: [], launch: [], macros: [], banks: [], fx: [] };
+    this.map = { pads: [], knobs: [], scenes: [], launch: [], macros: [],
+      banks: [], fx: [], transport: [] };
     // Notes landing within this window count as one chord, so pads played
     // together come in together instead of one at a time.
     this.chordWindow = 60;
@@ -106,7 +109,7 @@ export class Midi {
     try {
       const raw = localStorage.getItem(STORE_KEY);
       if (raw) this.map = { pads: [], knobs: [], scenes: [], launch: [], macros: [],
-        banks: [], fx: [], ...JSON.parse(raw) };
+        banks: [], fx: [], transport: [], ...JSON.parse(raw) };
     } catch { /* first run, or storage disabled */ }
   }
 
@@ -118,7 +121,8 @@ export class Midi {
   }
 
   clear() {
-    this.map = { pads: [], knobs: [], scenes: [], launch: [], macros: [], banks: [], fx: [] };
+    this.map = { pads: [], knobs: [], scenes: [], launch: [], macros: [],
+      banks: [], fx: [], transport: [] };
     // Notes landing within this window count as one chord, so pads played
     // together come in together instead of one at a time.
     this.chordWindow = 60;
@@ -137,6 +141,7 @@ export class Midi {
       macros: this.map.macros.length,
       banks: (this.map.banks || []).length,
       fx: (this.map.fx || []).length,
+      transport: (this.map.transport || []).length,
     };
   }
 
@@ -187,7 +192,8 @@ export class Midi {
     // (no device bound, wrong port) must not leave you with nothing either.
     this.learn = kind;
     this.learnIndex = 0;
-    this.target = (kind === 'scenes' || kind === 'macros' || kind === 'fx') ? 4 : 8;
+    this.target = (kind === 'scenes' || kind === 'macros' || kind === 'fx'
+      || kind === 'transport') ? 4 : 8;
     this.pending = [];
     this.bankDevice = null;
     this.bankKind = null;
@@ -249,6 +255,15 @@ export class Midi {
     this.lastMessage = describe(status, channel, a, b);
     if (this.h.onActivity) this.h.onActivity(this.lastMessage, this.messageCount, device);
 
+    // A pad set to send Program Change or CC instead of a note never reaches
+    // a note learn, and "0 of 4" with the monitor line scrolling looks like a
+    // bug in here. Say what the message actually was.
+    if (this.learn && this.learn !== 'knobs' && this.learn !== 'bank'
+        && (status === 0xc0 || status === 0xb0) && this.h.onWrongMode) {
+      this.h.onWrongMode(status === 0xc0 ? 'Program Change' : 'CC', device);
+      if (status === 0xc0) return;
+    }
+    if (status === 0xc0) return;          // nothing else listens for these
     if (status === 0xb0) return this.onCC(a, b, device);
     if (status === 0x90 && b > 0) return this.onNoteOn(a, channel, device, b / 127);
     if (status === 0x80 || (status === 0x90 && b === 0)) return this.onNoteOff(a, device);
@@ -290,8 +305,8 @@ export class Midi {
     const hit = this.bankHit('note', note, device);
     if (hit) { this.h.onBank(hit.bank, hit.track, 1); return; }
 
-    if (this.learn === 'pads' || this.learn === 'scenes'
-        || this.learn === 'launch' || this.learn === 'macros' || this.learn === 'fx') {
+    if (this.learn === 'pads' || this.learn === 'scenes' || this.learn === 'launch'
+        || this.learn === 'macros' || this.learn === 'fx' || this.learn === 'transport') {
       // Twice in one pass, from the same surface.
       if (this.pending.some((m) => hits(m, note, device))) return;
       // If the control already has another job, take it — refusing silently
@@ -324,6 +339,9 @@ export class Midi {
     const macro = (this.map.macros || []).findIndex((m) => hits(m, note, device));
     if (macro >= 0) { this.h.onMacro(macro, true); return; }
 
+    const tr = (this.map.transport || []).findIndex((m) => hits(m, note, device));
+    if (tr >= 0) { this.h.onTransport(tr); return; }
+
     let by = this.heldBy.get(note);
     if (!by) { by = new Set(); this.heldBy.set(note, by); }
     by.add(device);
@@ -355,7 +373,7 @@ export class Midi {
    * @returns {string|null} the role it was taken from, for the status line
    */
   release(kind, note, device = '') {
-    for (const k of ['pads', 'scenes', 'launch', 'macros', 'fx']) {
+    for (const k of ['pads', 'scenes', 'launch', 'macros', 'fx', 'transport']) {
       if (k === kind) continue;
       const list = this.map[k] || [];
       const at = list.findIndex((m) => hits(m, note, device));
@@ -387,6 +405,9 @@ export class Midi {
 
     const macro = (this.map.macros || []).findIndex((m) => hits(m, note, device));
     if (macro >= 0) { this.h.onMacro(macro, false); return; }
+
+    // Transport controls fire on the way down only; nothing to release.
+    if ((this.map.transport || []).some((m) => hits(m, note, device))) return;
     const by = this.heldBy.get(note);
     if (!by) return;
     by.delete(device);

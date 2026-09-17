@@ -32,13 +32,25 @@ export class Recorder {
     this.node.connect(sink).connect(this.ctx.destination);
   }
 
-  start() {
+  /**
+   * @param {number} [at] audio time to begin on. The worklet is armed now and
+   *   told which frame to start filling, so a take that is meant to begin on
+   *   a downbeat begins exactly there rather than a timer's worth of milli-
+   *   seconds either side of it.
+   */
+  start(at = 0) {
     if (this.recording || !this.node) return;
     this.chunks = [];
     this.frames = 0;
     this.recording = true;
-    this.startedAt = this.ctx.currentTime;
-    this.node.port.postMessage('start');
+    this.startedAt = at || this.ctx.currentTime;
+    if (at) this.node.port.postMessage({ cmd: 'start', at });
+    else this.node.port.postMessage('start');
+  }
+
+  /** Armed and waiting for its start time, rather than actually recording. */
+  get armed() {
+    return this.recording && this.ctx.currentTime < this.startedAt;
   }
 
   /** @returns {{blob: Blob, seconds: number}|null} */
@@ -59,7 +71,7 @@ export class Recorder {
   }
 
   elapsed() {
-    return this.recording ? this.ctx.currentTime - this.startedAt : 0;
+    return this.recording ? Math.max(0, this.ctx.currentTime - this.startedAt) : 0;
   }
 
   encodeWav() {
