@@ -4,6 +4,7 @@ import { SEEDS, ROOTS, generateSeed, decodeFile } from './audio/sources.js';
 import { Recorder } from './audio/recorder.js';
 import { InputCapture } from './audio/capture.js';
 import { WAVES, renderSequence } from './audio/synth.js';
+import { Setlist } from './setlist.js';
 import { LiveBuffer } from './audio/livebuf.js';
 import { paulStretch } from './audio/stretch.js';
 import { Midi, KNOB_TARGETS, RELATIVE, noteOf, deviceOf } from './audio/midi.js';
@@ -86,6 +87,8 @@ let broadcast = null;
 let worldClock = null;
 let swells = null;
 let effects = null;
+let setlist = null;
+let performing = false;
 
 const pads = Array.from({ length: PAD_COUNT }, (_, i) => ({
   name: 'empty', buffer: null, peaks: null, on: false, index: i,
@@ -2504,6 +2507,15 @@ function wireGlobal() {
     if (e.code === 'Space' && e.shiftKey) { e.preventDefault(); captureNow(); return; }
     if (e.code === 'Space') { e.preventDefault(); toggleRecord(); return; }
     if (e.key === '?') { $('help').classList.toggle('hidden'); return; }
+    if (e.key === 'p' || e.key === 'P') { e.preventDefault(); setPerform(!performing); return; }
+    // In performance mode the arrows move through the set rather than the
+    // tabs, because there are no tabs on screen to move through.
+    if (performing && e.code === 'ArrowRight' && e.shiftKey) {
+      e.preventDefault(); gotoPiece(setlist.at + 1, +$('set-morph').value); return;
+    }
+    if (performing && e.code === 'ArrowLeft' && e.shiftKey) {
+      e.preventDefault(); gotoPiece(setlist.at - 1, +$('set-morph').value); return;
+    }
 
     const n = parseInt(e.key, 10);
     if (n >= 1 && n <= PAD_COUNT) { togglePad(n - 1); select(n - 1); return; }
@@ -2524,6 +2536,173 @@ function wireGlobal() {
   window.addEventListener('drop', (e) => e.preventDefault());
 }
 
+
+/* ---------------- the set ---------------- */
+
+/**
+ * Move to a piece. Pads whose material carries over morph their parameters;
+ * pads whose material changes fade out on their own Fade out, swap while
+ * silent, and come back on their own Fade in. Both halves run at once under
+ * one glide, so what you hear is a transition rather than a load.
+ */
+async function gotoPiece(index, seconds) {
+  if (!setlist || index < 0 || index >= setlist.length) return;
+  const piece = setlist.pieces[index];
+  const { swap } = setlist.plan(pads, piece);
+  const sources = piece.data.sources || [];
+
+  // Start the swapping pads fading first — their own Fade out is the cover
+  // the exchange happens behind.
+  const sounding = swap.filter((i) => pads[i].on);
+  for (const i of sounding) engine.voices[i].stop();
+  const cover = Math.max(0, ...sounding.map((i) => engine.voices[i].p.release));
+
+  // The morph can begin immediately: it is gliding the pads that stay.
+  morphTarget = null;
+  markActiveScene(null);
+  morpher.start(structuredClone(piece.data.current), Math.max(0.05, seconds));
+
+  setlist.at = index;
+  paintStage();
+  if (broadcast) broadcast.setPiece(piece.name, index, setlist.length);
+
+  // Swap once the fades have actually landed.
+  await new Promise((r) => setTimeout(r, cover * 1000 + 80));
+  for (const i of swap) {
+    const s = sources[i];
+    pads[i].on = false;
+    if (!s || !s.source) { clearPad(i); continue; }
+    if (piece.buffers[i]) assignBuffer(i, piece.buffers[i], s.name, s.source);
+    else if (s.source.kind === 'keys') {
+      assignKeys(i, s.source.wave || 'sine', false);
+      if (s.source.seq && s.source.seq.length) {
+        engine.voices[i].setSequence(s.source.seq, s.source.bars || 0);
+        pads[i].name = seqName(i);
+      }
+      pads[i].source = s.source;
+    } else if (s.source.kind === 'forge') {
+      assignBuffer(i, generateSeed(engine.ctx, s.source.gen, s.source), s.name, s.source);
+    }
+    // The morph is still running and already knows whether this pad should be
+    // up; it raises the level itself, so starting it here is the whole job.
+    const want = piece.data.current.voices[i];
+    if (want && want.on) { pads[i].on = true; engine.voices[i].start(); }
+  }
+  renderPadHeads();
+  refreshPadPanel();
+  buildSlots();
+}
+
+/** An empty pad, for a piece that does not use this slot. */
+function clearPad(i) {
+  const pad = pads[i];
+  if (pad.live) detachLive();
+  engine.voices[i].stop();
+  engine.voices[i].clearNoteSource();
+  pad.buffer = null;
+  pad.peaks = null;
+  pad.name = 'empty';
+  pad.source = null;
+  pad.original = null;
+}
+
+function paintSetlist() {
+  const host = $('setlist');
+  host.innerHTML = '';
+  setlist.pieces.forEach((p, i) => {
+    const li = document.createElement('li');
+    li.className = 'piece' + (i === setlist.at ? ' playing' : '');
+    li.innerHTML = `<span class="n">${i + 1}</span>
+      <span class="nm">${p.name}</span>
+      <span class="sz">${Object.keys(p.buffers).length} sources</span>
+      <button class="mini" data-go="${i}">Play</button>
+      <button class="mini" data-up="${i}">&uarr;</button>
+      <button class="mini" data-rm="${i}">&times;</button>`;
+    host.appendChild(li);
+  });
+  const mb = setlist.bytes() / 1048576;
+  $('set-note').textContent = setlist.length
+    ? `${setlist.length} piece${setlist.length > 1 ? 's' : ''} · ${mb.toFixed(0)} MB in memory`
+    : 'load it before the show';
+  paintStage();
+}
+
+function paintStage() {
+  if (!setlist) return;
+  const cur = setlist.current, nxt = setlist.next;
+  $('stage-piece').textContent = cur ? cur.name : '—';
+  $('stage-nextpiece').textContent = nxt ? nxt.name : 'end of set';
+  $('stage-pos').textContent = setlist.length
+    ? `${Math.max(1, setlist.at + 1)} of ${setlist.length}` : '';
+  $('btn-stage-go').disabled = !nxt;
+  const sel = $('set-morph');
+  $('stage-morph').textContent = sel && sel.value ? `${sel.value}s over` : '';
+}
+
+function wireSet() {
+  $('btn-set-add').addEventListener('click', () => $('set-input').click());
+  $('set-input').addEventListener('change', async (e) => {
+    const files = [...e.target.files].sort((a, b) => a.name.localeCompare(b.name));
+    let ok = 0;
+    for (const f of files) {
+      try { await setlist.add(f); ok++; }
+      catch (err) { $('set-status').textContent = `${f.name}: ${err.message}`; }
+    }
+    if (ok) {
+      $('set-status').textContent = `${ok} piece${ok > 1 ? 's' : ''} added and decoded. `
+        + 'Nothing will touch the disk once you start.';
+    }
+    paintSetlist();
+    e.target.value = '';
+  });
+
+  $('setlist').addEventListener('click', async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.go !== undefined) await gotoPiece(+b.dataset.go, +$('set-morph').value);
+    else if (b.dataset.rm !== undefined) setlist.remove(+b.dataset.rm);
+    else if (b.dataset.up !== undefined) setlist.move(+b.dataset.up, +b.dataset.up - 1);
+    paintSetlist();
+  });
+
+  $('set-name').addEventListener('input', (e) => { setlist.name = e.target.value; });
+  $('set-morph').addEventListener('change', paintStage);
+
+  $('btn-set-save').addEventListener('click', () => {
+    if (!setlist.length) { $('set-status').textContent = 'Nothing in the set yet.'; return; }
+    download(new Blob([setlist.serialize()], { type: 'application/json' }),
+      `ambient-set-${stamp()}.json`);
+  });
+  $('btn-set-load').addEventListener('click', () => $('setfile-input').click());
+  $('setfile-input').addEventListener('change', async (e) => {
+    if (!e.target.files[0]) return;
+    try {
+      const n = await setlist.load(await e.target.files[0].text());
+      $('set-name').value = setlist.name;
+      $('set-status').textContent = `Set loaded: ${n} pieces, decoded and ready.`;
+    } catch (err) {
+      $('set-status').textContent = `Could not open: ${err.message}`;
+    }
+    paintSetlist();
+    e.target.value = '';
+  });
+
+  $('btn-stage-go').addEventListener('click', () => gotoPiece(setlist.at + 1, +$('set-morph').value));
+  $('btn-stage-exit').addEventListener('click', () => setPerform(false));
+  $('btn-perform').addEventListener('click', () => setPerform(!performing));
+}
+
+/** Everything that is not the instrument goes away. */
+function setPerform(on) {
+  performing = on;
+  document.body.classList.toggle('perform', on);
+  $('stage').hidden = !on;
+  $('btn-perform').classList.toggle('on', on);
+  paintStage();
+  // The pads changed size, so their canvases need re-measuring.
+  requestAnimationFrame(() => { for (const pad of pads) fitCanvas(pad.canvas); });
+}
+
 /* ---------------- boot ---------------- */
 
 async function begin() {
@@ -2539,6 +2718,7 @@ async function begin() {
   broadcast = new Broadcast(engine, pads);
   broadcast.start();
   worldClock = new WorldClock(paintWorldClock);
+  setlist = new Setlist(engine.ctx);
   swells = new Swells(engine, pads, norm, denorm);
   effects = new Effects(engine, pads);
 
@@ -2569,6 +2749,7 @@ async function begin() {
   wireInput();
   wireLive();
   wireKeys();
+  wireSet();
   wireStretch();
   wireSpace();
   wireScenes();

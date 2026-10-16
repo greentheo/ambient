@@ -523,3 +523,68 @@ input[type=search]:focus,input[type=password]:focus{outline:none;border-color:va
 /* A control that the current playback mode ignores. */
 .par.inert{opacity:.32}
 .par.inert .dial{filter:grayscale(1)}
+
+/* ---------- the set ---------- */
+.setlist{list-style:none;margin:10px 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.piece{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--dial-bg);
+  border:1px solid var(--line);border-radius:8px}
+.piece.playing{border-color:var(--accent);background:var(--on-bg)}
+.piece .n{font:11px ui-monospace,monospace;color:var(--faint);min-width:16px}
+.piece .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.piece.playing .nm{color:var(--accent)}
+.piece .sz{font:10px ui-monospace,monospace;color:var(--faint);white-space:nowrap}
+.setlist:empty::after{content:"Nothing in the set yet.";color:var(--faint);font-size:12px}
+
+/* ---------- performance mode ---------- */
+/* On stage the instrument is the whole screen. Everything that exists to
+   build a sound rather than play one gets out of the way — but nothing is
+   unbound, so every key and every control surface still works. */
+.stage{display:flex;align-items:center;gap:16px;padding:10px 14px;margin-bottom:12px;
+  background:var(--panel);border:1px solid var(--accent);border-radius:var(--radius);
+  flex-wrap:wrap}
+.stage[hidden]{display:none}
+.stage-now,.stage-next{display:flex;align-items:baseline;gap:9px;min-width:0}
+.stage-label{font:10px ui-monospace,monospace;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--faint)}
+.stage-now b{font-size:19px;color:var(--accent)}
+.stage-next b{font-size:15px;color:var(--dim)}
+.stage-pos{font:11px ui-monospace,monospace;color:var(--faint)}
+.stage-morph{font:11px ui-monospace,monospace;color:var(--faint)}
+.stage-morph{margin-left:auto}
+.stage #btn-stage-go{width:auto;padding:9px 22px}
+
+/* Hide the parts that exist to build a sound, not the part that plays one.
+   Scenes live inside .workspace, so the workspace stays and its other
+   children go — hiding the parent would take the scenes with it. */
+body.perform .side-col,
+body.perform .orbit-strip,
+body.perform .tabs,
+body.perform .sheet,
+body.perform .cols,
+body.perform .size,
+body.perform .master{display:none !important}
+/* Scenes belong above the pads on stage, not under eight of them. The app is
+   a flex column, so ordering moves the whole block without touching the DOM. */
+body.perform .app{display:flex;flex-direction:column;gap:12px}
+body.perform .stage{order:-2}
+body.perform .workspace{display:block;order:-1;margin:0}
+body.perform .pads{order:0}
+body.perform .leftcol{max-width:none;width:100%}
+body.perform .scenes-strip{padding:8px 12px}
+body.perform .scenes-strip .strip-label{flex:0 0 auto}
+body.perform .scenes-strip .slots button{min-height:40px;font-size:14px}
+body.perform .bar{padding:7px 14px}
+body.perform .pad canvas{height:148px}
+body.perform .pad-name{font-size:16px}
+body.perform .app{padding:14px 18px}
+/* Scenes stay: they are the other half of playing this thing live. */
+body.perform .scenes-strip{display:flex;flex-direction:row;align-items:center;gap:10px;
+  margin-top:12px;max-width:none}
+body.perform .scenes-strip .slots{display:flex;flex-direction:row;gap:8px;flex:1}
+body.perform .morph-inline{display:none}
+
+@media (max-width:620px){
+  .stage{gap:10px}
+  .stage #btn-stage-go{margin-left:0;width:100%}
+  body.perform .pad canvas{height:104px}
+}

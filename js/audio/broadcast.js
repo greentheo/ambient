@@ -17,6 +17,7 @@ export class Broadcast {
     this.channel = null;
     this.timer = null;
     this.scene = { active: null, target: null, progress: 0 };
+    this.piece = null;
   }
 
   get open() { return !!this.channel; }
@@ -34,6 +35,11 @@ export class Broadcast {
     this.channel = null;
   }
 
+  /** Which piece of the set is playing, so a world can follow the programme. */
+  setPiece(name, index, total) {
+    this.piece = { name, index, total };
+  }
+
   /** Called by the app when a morph starts, advances or lands. */
   setScene(active, target, progress) {
     this.scene = { active, target, progress };
@@ -48,6 +54,7 @@ export class Broadcast {
       master: e.level(),
       grains: e.grainCount(),
       scene: this.scene,
+      piece: this.piece,
       space: { reverb: num('rv-size'), dark: num('rv-dark'), feedback: num('dl-fb') },
       voices: e.voices.map((v, i) => ({
         on: this.pads[i].on,
